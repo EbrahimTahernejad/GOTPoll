@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { cleanFilters } from './poll/filters.js';
 
 // Everything the streamer decides lives here, separate from the catalog, so
 // catalog updates/reverts never lose ignores, taught aliases or settings.
@@ -11,6 +12,7 @@ const DEFAULT_SETTINGS: Settings = {
   // no channels baked in – the streamer adds theirs in Settings → Channels
   channels: [],
   pollTitle: 'Anime Poll',
+  pollFilters: { formats: ['TV', 'TV_SHORT', 'MOVIE'], release: ['released', 'airing', 'upcoming'] },
   tunnelProvider: 'cloudflare',
   ngrokToken: '',
   tunnelAutoStart: false,
@@ -39,7 +41,7 @@ function custom(
 ): Show {
   return {
     id, titleRomaji, titleEnglish, synonyms, startYear, season, format: 'TV', coverImage,
-    coverColor: null, popularity, score: null, favourites: null, parentId: null, eligible: true,
+    coverColor: null, popularity, score: null, favourites: null, parentId: null, eligible: true, release: 'released',
     custom: true,
   };
 }
@@ -143,6 +145,9 @@ export class UserStore {
     if (stored.tunnelProvider === 'cloudflare' || stored.tunnelProvider === 'ngrok') out.tunnelProvider = stored.tunnelProvider;
     if (typeof stored.ngrokToken === 'string') out.ngrokToken = stored.ngrokToken.trim();
     if (typeof stored.tunnelAutoStart === 'boolean') out.tunnelAutoStart = stored.tunnelAutoStart;
+    if (stored.pollFilters && Array.isArray(stored.pollFilters.formats) && Array.isArray(stored.pollFilters.release)) {
+      out.pollFilters = cleanFilters(stored.pollFilters);
+    }
     if (typeof stored.pollTitle === 'string' && stored.pollTitle.trim()) out.pollTitle = stored.pollTitle.trim().slice(0, 60);
     if (['classic', 'vector', 'hybrid', 'hybrid-llm', 'precise-hybrid-llm', 'precise-llm'].includes(stored.matcherStrategy)) out.matcherStrategy = stored.matcherStrategy;
     if (['minilm', 'e5'].includes(stored.embedModel)) out.embedModel = stored.embedModel;
@@ -168,7 +173,9 @@ export class UserStore {
     const stmt = this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
     this.db.transaction(() => {
       for (const [k, v] of Object.entries(patch)) {
-        if (k in DEFAULT_SETTINGS && v !== undefined) stmt.run(k, JSON.stringify(k === 'channels' ? cleanChannels(v as ChannelConfig[]) : v));
+        if (!(k in DEFAULT_SETTINGS) || v === undefined) continue;
+        const clean = k === 'channels' ? cleanChannels(v as ChannelConfig[]) : k === 'pollFilters' ? cleanFilters(v as PollFilters) : v;
+        stmt.run(k, JSON.stringify(clean));
       }
     })();
     return this.settings();

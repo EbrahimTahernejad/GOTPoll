@@ -6,6 +6,7 @@ import type { UserStore } from '../user-store.js';
 import { sessionFor, type SourceDeps } from './sources/factory.js';
 import type { ChatMessage } from './sources/types.js';
 import { Supervisor } from './supervisor.js';
+import { cleanFilters } from './filters.js';
 import { PRECISE_FUZZY, type Strategy } from '../matching/strategies.js';
 
 // Votes are tracked per *phrase* (a cleaned chat message), not per show:
@@ -35,7 +36,8 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
   private state: PollState = 'idle';
   private startedAt: number | null = null;
   private endedAt: number | null = null;
-  private formats: ShowFormat[] = [];
+  private filters: PollFilters = { formats: ['TV', 'TV_SHORT', 'MOVIE'], release: ['released', 'airing', 'upcoming'] };
+  private releaseKnown = true;
   private messages = 0;
   private version = 0;
 
@@ -72,20 +74,23 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
 
   // ------------------------------------------------------------ lifecycle
 
-  async start(formats: ShowFormat[], opts: { sources?: boolean } = {}) {
+  async start(filters: PollFilters, opts: { sources?: boolean } = {}) {
     if (this.state === 'running') return;
     this.resetData();
+    this.filters = cleanFilters(filters);
+    this.user.setSettings({ pollFilters: this.filters });
     const settings = this.user.settings();
-    this.formats = formats.length ? formats : ['TV', 'TV_SHORT', 'MOVIE'];
     this.onePerViewer = settings.onePerViewer;
     this.ignored = this.user.ignores();
     this.dismissed = this.user.dismissed();
 
     // Snapshot the catalog: an update finishing mid-poll can't move the
     // ground under a running count. It applies to the next poll.
-    const pool = [...this.catalog.all(), ...this.user.customShows()].filter(
-      (s) => s.eligible && this.formats.includes(s.format)
-    );
+    // Match against EVERY votable show and let the filters decide what
+    // counts: a vote for a filtered-out show must not drift onto a
+    // look-alike that happens to pass the filters.
+    const pool = [...this.catalog.all(), ...this.user.customShows()].filter((s) => s.eligible);
+    this.releaseKnown = this.catalog.info().hasRelease;
     this.shows = new Map(pool.map((s) => [s.id, s]));
     this.catalogVersionAtStart = this.catalog.info().file;
     this.matcher = new Matcher({
@@ -356,10 +361,15 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
   snapshot(): PollSnapshot {
     const ranking: RankedShow[] = [];
     let totalVotes = 0;
+    let filteredVotes = 0;
     const voters = new Set<string>();
     for (const [id, set] of this.votes) {
       const show = this.shows.get(id);
       if (!show || this.ignored.has(id) || !set.size) continue;
+      if (!this.counts(show)) {
+        filteredVotes += set.size;
+        continue;
+      }
       ranking.push({ ...show, count: set.size });
       totalVotes += set.size;
       set.forEach((v) => voters.add(v));
@@ -377,7 +387,10 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       state: this.state,
       startedAt: this.startedAt,
       endedAt: this.endedAt,
-      formats: this.formats,
+      filters: this.filters,
+      filteredVotes,
+      // a running poll keeps what it started with; otherwise ask the catalog now
+      releaseKnown: this.state === 'idle' ? this.catalog.info().hasRelease : this.releaseKnown,
       messages: this.messages,
       totalVoters: voters.size,
       totalVotes,
@@ -391,6 +404,13 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
         this.state === 'running' && this.catalogVersionAtStart !== '' &&
         this.catalogVersionAtStart !== this.catalog.info().file,
     };
+  }
+
+  /** Does this show count under the poll's filters? */
+  private counts(show: Show) {
+    if (!this.filters.formats.includes(show.format)) return false;
+    // unknown release (old catalog): can't judge – count it
+    return show.release === null || this.filters.release.includes(show.release);
   }
 
   publicSnapshot(s = this.snapshot()): PublicSnapshot {

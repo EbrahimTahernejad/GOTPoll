@@ -2,6 +2,8 @@ import type { CatalogInfo, UpdateStatus } from './catalog/store';
 
 declare global {
   type ShowFormat = 'TV' | 'TV_SHORT' | 'MOVIE';
+  /** of the franchise's first season: released = at least one full season out */
+  type ShowRelease = 'released' | 'airing' | 'upcoming';
   type ShowSeason = 'SPRING' | 'SUMMER' | 'FALL' | 'WINTER';
 
   type Show = {
@@ -20,6 +22,8 @@ declare global {
     parentId: number | null;
     /** franchise root – the only kind of entry polls count */
     eligible: boolean;
+    /** null when the catalog predates release status (update it) */
+    release: ShowRelease | null;
     custom?: boolean;
   };
 
@@ -43,12 +47,19 @@ declare global {
 
   type PollState = 'idle' | 'running' | 'ended';
 
+  /** which shows count in a poll – matching ignores these on purpose */
+  type PollFilters = { formats: ShowFormat[]; release: ShowRelease[] };
+
   type PollSnapshot = {
     version: number;
     state: PollState;
     startedAt: number | null;
     endedAt: number | null;
-    formats: ShowFormat[];
+    filters: PollFilters;
+    /** votes that matched a show the filters leave out (not counted) */
+    filteredVotes: number;
+    /** the catalog has release status (older catalogs need an update) */
+    releaseKnown: boolean;
     messages: number;
     totalVoters: number;
     totalVotes: number;
@@ -169,6 +180,8 @@ declare global {
     tunnelAutoStart: boolean;
     /** shown on the app and the viewer page */
     pollTitle: string;
+    /** last used poll filters */
+    pollFilters: PollFilters;
     /** how chat is matched to shows – all local and free */
     matcherStrategy: MatcherStrategy;
     embedModel: 'minilm' | 'e5';
@@ -213,7 +226,7 @@ declare global {
         onChanged: (cb: (info: CatalogMeta) => void) => () => void;
       };
       poll: {
-        start: (formats: ShowFormat[]) => Promise<void>;
+        start: (filters: PollFilters) => Promise<void>;
         stop: () => Promise<void>;
         reset: () => Promise<void>;
         snapshot: () => Promise<PollSnapshot>;

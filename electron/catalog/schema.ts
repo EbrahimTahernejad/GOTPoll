@@ -18,6 +18,7 @@ export const CATALOG_SQL = `
     cover_image TEXT,
     cover_color TEXT,
     parent_id INTEGER,                     -- same-format prequel, if any
+    status TEXT,                           -- AniList: FINISHED / RELEASING / NOT_YET_RELEASED / HIATUS / CANCELLED
     popularity INTEGER NOT NULL DEFAULT 0,
     score INTEGER,
     favourites INTEGER
@@ -39,6 +40,8 @@ export type ShowRow = {
   cover_image: string | null;
   cover_color: string | null;
   parent_id: number | null;
+  /** absent in catalogs synced before 0.3 */
+  status?: string | null;
   popularity: number;
   score: number | null;
   favourites: number | null;
@@ -76,6 +79,7 @@ export function mediaToRow(m: AniListMedia): ShowRow | null {
     cover_image: m.coverImage?.extraLarge ?? m.coverImage?.large ?? null,
     cover_color: m.coverImage?.color ?? null,
     parent_id: prequel?.node.id ?? null,
+    status: m.status,
     popularity: m.popularity ?? 0,
     score: m.averageScore,
     favourites: m.favourites,
@@ -85,16 +89,16 @@ export function mediaToRow(m: AniListMedia): ShowRow | null {
 export function prepareUpsert(db: Database.Database) {
   const stmt = db.prepare(`
     INSERT INTO shows (id, title_romaji, title_english, title_native, synonyms, start_year, season,
-      format, raw_format, country, cover_image, cover_color, parent_id, popularity, score, favourites)
+      format, raw_format, country, cover_image, cover_color, parent_id, status, popularity, score, favourites)
     VALUES (@id, @title_romaji, @title_english, @title_native, @synonyms, @start_year, @season,
-      @format, @raw_format, @country, @cover_image, @cover_color, @parent_id, @popularity, @score, @favourites)
+      @format, @raw_format, @country, @cover_image, @cover_color, @parent_id, @status, @popularity, @score, @favourites)
     ON CONFLICT(id) DO UPDATE SET
       title_romaji = excluded.title_romaji, title_english = excluded.title_english,
       title_native = excluded.title_native, synonyms = excluded.synonyms,
       start_year = excluded.start_year, season = excluded.season, format = excluded.format,
       raw_format = excluded.raw_format, country = excluded.country,
       cover_image = excluded.cover_image, cover_color = excluded.cover_color,
-      parent_id = excluded.parent_id, popularity = excluded.popularity,
+      parent_id = excluded.parent_id, status = excluded.status, popularity = excluded.popularity,
       score = excluded.score, favourites = excluded.favourites
   `);
   return db.transaction((rows: ShowRow[]) => {
@@ -147,6 +151,7 @@ export function migrateLegacy(db: Database.Database) {
         cover_color: null,
         // v1 only knew *whether* there was a prequel; -1 keeps it out of polls
         parent_id: r.has_prequel ? -1 : null,
+        status: null,
         popularity: r.popularity ?? 0,
         score: r.score,
         favourites: r.favourites,
@@ -155,4 +160,25 @@ export function migrateLegacy(db: Database.Database) {
   db.exec('DROP TABLE anime');
   setMeta(db, { schema: SCHEMA_VERSION, source: 'legacy', synced_at: 0 });
   return true;
+}
+
+/**
+ * Where a franchise stands, judged by its FIRST season only (polls count
+ * franchise roots): one finished season = released, even while a sequel airs.
+ */
+export function releaseOf(status: string | null | undefined, startYear: number | null): ShowRelease | null {
+  switch (status) {
+    case 'FINISHED':
+      return 'released';
+    case 'RELEASING':
+    case 'HIATUS':
+      return 'airing';
+    case 'NOT_YET_RELEASED':
+      return 'upcoming';
+    case 'CANCELLED':
+      // cancelled before or after it started airing
+      return startYear !== null && startYear <= new Date().getFullYear() ? 'released' : 'upcoming';
+    default:
+      return null; // catalog predates release status – update it
+  }
 }

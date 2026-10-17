@@ -13,6 +13,7 @@ import {
 import path from 'node:path';
 import { fetchCatalog, type SyncProgress } from './anilist.js';
 import {
+  releaseOf,
   CATALOG_SQL,
   getMeta,
   mediaToRow,
@@ -36,6 +37,8 @@ import {
 
 export type CatalogInfo = {
   file: string;
+  /** false for catalogs synced before release status was stored */
+  hasRelease: boolean;
   count: number;
   eligible: number;
   syncedAt: number;
@@ -110,8 +113,10 @@ export class CatalogStore extends EventEmitter<{
     const meta = getMeta(db);
     const count = (db.prepare('SELECT COUNT(*) AS n FROM shows').get() as { n: number }).n;
     const prev = this.pointer?.previous;
+    const hasRelease = (db.prepare("SELECT 1 FROM pragma_table_info('shows') WHERE name = 'status'").get() ?? null) !== null;
     return {
       file: this.pointer!.file,
+      hasRelease,
       count,
       eligible: this.all().filter((s) => s.eligible).length,
       syncedAt: Number(meta.synced_at || 0),
@@ -139,6 +144,7 @@ export class CatalogStore extends EventEmitter<{
       score: r.score,
       favourites: r.favourites,
       parentId: r.parent_id,
+      release: releaseOf(r.status, r.start_year),
       // a prequel we don't carry (e.g. adult / OVA) doesn't disqualify a show
       eligible: r.parent_id === null || (r.parent_id !== -1 && !ids.has(r.parent_id)),
     }));

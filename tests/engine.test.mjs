@@ -6,18 +6,22 @@ import { PollEngine } from '../build/electron/poll/engine.js';
 const S = (id, titleRomaji, titleEnglish, popularity, extra = {}) => ({
   id, titleRomaji, titleEnglish, synonyms: [], startYear: 2020, season: 'FALL', format: 'TV',
   coverImage: null, coverColor: null, popularity, score: null, favourites: null, parentId: null,
-  eligible: true, ...extra,
+  eligible: true, release: 'released', ...extra,
 });
+const ALL = { formats: ['TV', 'TV_SHORT', 'MOVIE'], release: ['released', 'airing', 'upcoming'] };
 const SHOWS = [
   S(1, 'Sousou no Frieren', "Frieren: Beyond Journey's End", 500000),
   S(2, 'Jujutsu Kaisen', null, 850000, { synonyms: ['JJK'] }),
   S(3, 'Chainsaw Man', null, 700000),
+  // an upcoming sequel-free show whose title overlaps a released one
+  S(4, 'Chainsaw Man: The Movie Reze-hen', null, 300000, { format: 'MOVIE', release: 'upcoming' }),
+  S(5, 'Sousou no Frieren 2', null, 100000, { release: 'airing' }),
 ];
 
 function setup(settings = {}) {
   const catalog = Object.assign(new EventEmitter(), {
     all: () => SHOWS,
-    info: () => ({ file: 'a.db' }),
+    info: () => ({ file: 'a.db', hasRelease: true }),
     sequelAliases: () => [],
   });
   const taught = [];
@@ -28,6 +32,7 @@ function setup(settings = {}) {
     aliases: () => [],
     customShows: () => [],
     teach: (phrase, showId) => taught.push([phrase, showId]),
+    setSettings: () => {},
     dismiss: () => {},
     setIgnored: () => {},
   };
@@ -39,7 +44,7 @@ const counts = (e) => Object.fromEntries(e.snapshot().ranking.map((r) => [r.id, 
 
 test('one count per viewer per show, across phrasings', async () => {
   const { engine } = setup();
-  await engine.start([]);
+  await engine.start(ALL);
   say(engine, 'a', 'frieren');
   say(engine, 'a', 'FRIEREN!!!');
   say(engine, 'a', 'sousou no frieren');
@@ -51,7 +56,7 @@ test('one count per viewer per show, across phrasings', async () => {
 
 test('assigning an unmatched phrase recounts everyone who typed it', async () => {
   const { engine, taught } = setup();
-  await engine.start([]);
+  await engine.start(ALL);
   for (const u of ['a', 'b', 'c']) say(engine, u, 'the devil dog one');
   assert.equal(engine.snapshot().unmatched[0].phrase, 'the devil dog one');
   assert.equal(engine.snapshot().unmatched[0].voters, 3);
@@ -65,7 +70,7 @@ test('assigning an unmatched phrase recounts everyone who typed it', async () =>
 
 test('dismissing a phrase removes its votes', async () => {
   const { engine } = setup();
-  await engine.start([]);
+  await engine.start(ALL);
   say(engine, 'a', 'jjk');
   say(engine, 'b', 'jujutsu kaisen');
   engine.dismiss('jjk');
@@ -77,7 +82,7 @@ test('dismissing a phrase removes its votes', async () => {
 
 test('one vote per viewer: latest vote wins', async () => {
   const { engine } = setup({ onePerViewer: true });
-  await engine.start([]);
+  await engine.start(ALL);
   say(engine, 'a', 'frieren');
   say(engine, 'a', 'jjk');
   assert.deepEqual(counts(engine), { 2: 1 });
@@ -86,7 +91,7 @@ test('one vote per viewer: latest vote wins', async () => {
 
 test('ending freezes the count', async () => {
   const { engine } = setup();
-  await engine.start([]);
+  await engine.start(ALL);
   say(engine, 'a', 'chainsaw man');
   engine.stop();
   say(engine, 'b', 'chainsaw man');
@@ -94,4 +99,24 @@ test('ending freezes the count', async () => {
   assert.equal(s.state, 'ended');
   assert.deepEqual(counts(engine), { 3: 1 });
   assert.equal(engine.publicSnapshot(s).ranking[0].title, 'Chainsaw Man');
+});
+
+test('filters decide what counts – a filtered vote never drifts onto a look-alike', async () => {
+  const { engine } = setup();
+  await engine.start({ formats: ['TV'], release: ['released'] });
+  say(engine, 'a', 'chainsaw man the movie reze hen'); // upcoming movie: filtered twice over
+  say(engine, 'b', 'chainsaw man');
+  const s = engine.snapshot();
+  assert.deepEqual(counts(engine), { 3: 1 }, 'only the released TV show counts');
+  assert.equal(s.filteredVotes, 1, 'the movie vote is tallied as filtered, not moved to Chainsaw Man');
+  assert.equal(s.unmatched.length, 0);
+  engine.stop();
+});
+
+test('released means one full first season, whatever its sequels do', async () => {
+  const { engine } = setup();
+  await engine.start({ formats: ['TV', 'MOVIE', 'TV_SHORT'], release: ['released'] });
+  say(engine, 'a', 'sousou no frieren'); // root finished → counts
+  assert.deepEqual(counts(engine), { 1: 1 });
+  engine.stop();
 });

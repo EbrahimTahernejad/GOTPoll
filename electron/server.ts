@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import getFreePort from 'get-port';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { poll } from './services.js';
+import { poll, user } from './services.js';
 import { isPublicRequest, isPublicUpgrade } from './tunnel/allowlist.js';
 
 // Viewer page server (OBS browser source / second screen).
@@ -96,7 +96,7 @@ if (isDev) {
     timer = null;
     if (rate > 0) {
       if (poll.snapshot().state !== 'running') {
-        await poll.start(['TV', 'TV_SHORT', 'MOVIE'], { sources: false });
+        await poll.start(user.settings().pollFilters, { sources: false });
       }
       timer = setInterval(() => {
         poll.ingest({ platform: 'twitch', userId: `sim${Math.floor(Math.random() * 4000)}`, text: pick() });

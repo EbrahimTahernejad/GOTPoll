@@ -177,6 +177,48 @@ const FormatFloatingFilter = ({
   );
 };
 
+const ReleaseFloatingFilter = ({
+  model,
+  onModelChange,
+  api,
+}: FloatingFilterProps<string>) => {
+  const value = useMemo(() => model?.filter ?? 'all', [model]);
+  const formats = ['released', 'airing', 'upcoming'];
+
+  return (
+    <div className="w-full px-2">
+      <Select
+        value={value}
+        onValueChange={(value) => {
+          onModelChange(
+            value === 'all'
+              ? null
+              : {
+                  filter: value,
+                  type: 'equals',
+                  filterType: 'text',
+                }
+          );
+        }}
+      >
+        <SelectTrigger className="h-4 w-full border-0 !bg-transparent px-0 py-0 text-xs shadow-none !ring-0">
+          <SelectValue placeholder="Release" className="text-xs" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all" className="text-xs">
+            All
+          </SelectItem>
+          {formats.map((format: string) => (
+            <SelectItem className="text-xs" key={format} value={format}>
+              {format}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+};
+
 const IgnoreFloatingFilter = ({
   model,
   onModelChange,
@@ -305,6 +347,27 @@ const columnDefs: ColDef<ShowRow>[] = [
       return (
         <div className="flex h-full items-center">
           <Badge variant="secondary">{params.value}</Badge>
+        </div>
+      );
+    },
+  },
+  {
+    field: 'release',
+    headerName: 'Release',
+    width: 130,
+    filter: 'agTextColumnFilter',
+    filterParams: {
+      filterOptions: ['equals'],
+      buttons: ['reset', 'apply'],
+    },
+    floatingFilter: true,
+    suppressHeaderFilterButton: true,
+    suppressFloatingFilterButton: true,
+    floatingFilterComponent: ReleaseFloatingFilter,
+    cellRenderer: (params: ICellRendererParams<ShowRow>) => {
+      return (
+        <div className="flex h-full items-center">
+          {params.value ? <Badge variant={params.value === 'released' ? 'secondary' : 'outline'}>{params.value}</Badge> : <span className="text-muted-foreground text-xs">–</span>}
         </div>
       );
     },

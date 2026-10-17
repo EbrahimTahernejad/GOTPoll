@@ -6,8 +6,11 @@ import {
   MessageSquareText,
   Play,
   RotateCcw,
+  Radio,
   Settings2,
   Share2,
+  Trophy,
+  Check,
   Square,
   X,
 } from 'lucide-react';
@@ -40,7 +43,13 @@ import { cn } from '~/lib/utils';
 const FORMATS: { id: ShowFormat; label: string }[] = [
   { id: 'TV', label: 'TV' },
   { id: 'MOVIE', label: 'Movie' },
-  { id: 'TV_SHORT', label: 'TV Short' },
+  { id: 'TV_SHORT', label: 'Short' },
+];
+
+const RELEASES: { id: ShowRelease; label: string; hint: string }[] = [
+  { id: 'released', label: 'Released', hint: 'At least one full season out (sequels may still be airing)' },
+  { id: 'airing', label: 'Airing', hint: 'First season still airing' },
+  { id: 'upcoming', label: 'Upcoming', hint: 'Not aired yet' },
 ];
 
 export default function Home() {
@@ -51,7 +60,10 @@ export default function Home() {
   }, []);
   const time = useLiveTime(snap.startedAt, snap.endedAt);
   const port = useServerPort();
-  const [formats, setFormats] = useState<Set<ShowFormat>>(new Set(['TV', 'MOVIE', 'TV_SHORT']));
+  const [filters, setFilters] = useState<PollFilters | null>(null);
+  useEffect(() => {
+    window.GOTPoll.settings.get().then((s) => setFilters(s.pollFilters));
+  }, []);
   const [busy, setBusy] = useState(false);
   const [assigning, setAssigning] = useState<{ phrase: PollPhrase; current: number | null } | null>(null);
   const [inspecting, setInspecting] = useState<RankedShow | null>(null);
@@ -70,11 +82,12 @@ export default function Home() {
     }
   };
 
-  const toggleFormat = (f: ShowFormat, on: boolean) => {
-    const next = new Set(formats);
-    if (on) next.add(f);
-    else next.delete(f);
-    if (next.size) setFormats(next);
+  // a group can't be emptied: no shows would count
+  const toggle = <K extends keyof PollFilters>(key: K, value: PollFilters[K][number]) => {
+    if (!filters) return;
+    const list = filters[key] as string[];
+    const next = list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
+    if (next.length) setFilters({ ...filters, [key]: next });
   };
 
   return (
@@ -83,7 +96,6 @@ export default function Home() {
         <div className="flex items-center gap-2 select-none">
           <div className="h-9 w-9 bg-[url(/icon.png)] bg-cover bg-center bg-no-repeat" />
           <div className="text-xl font-semibold">{title}</div>
-          {time && <div className="text-muted-foreground font-mono text-sm tabular-nums">{time}</div>}
         </div>
         <div className="grow" />
         <div className="mr-2 flex items-center gap-2">
@@ -97,60 +109,94 @@ export default function Home() {
         </div>
       </TitleBarContent>
 
-      <div className="grid h-[calc(100vh-56px)] min-h-0 grid-cols-[1fr_300px] gap-3 px-3 pb-3">
-        <div className="flex min-h-0 flex-col gap-3">
-          {/* control bar */}
-          <div className="bg-card/40 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border px-3 py-2">
-            <StateChip state={snap.state} />
-            {snap.sources
-              .filter((c) => c.enabled)
-              .map((c) => (
-                <Source key={c.id} channel={c} />
-              ))}
-            <div className="text-muted-foreground flex items-center gap-4 text-xs tabular-nums">
-              <span>
-                <b className="text-foreground">{snap.totalVoters.toLocaleString()}</b> voters
-              </span>
-              <span>
-                <b className="text-foreground">{snap.messages.toLocaleString()}</b> messages
-              </span>
-            </div>
-            <div className="grow" />
-            <div className="flex items-center gap-4">
-              {FORMATS.map((f) => (
-                <div key={f.id} className="flex items-center gap-1.5">
-                  <Switch
-                    id={f.id}
-                    checked={formats.has(f.id)}
-                    disabled={running}
-                    onCheckedChange={(on) => toggleFormat(f.id, on)}
-                  />
-                  <Label htmlFor={f.id} className="text-xs">
-                    {f.label}
-                  </Label>
-                </div>
-              ))}
-            </div>
-            {running ? (
-              <Button variant="destructive" size="sm" disabled={busy} onClick={() => act(() => window.GOTPoll.poll.stop())}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-3.5 w-3.5 fill-current" />}
-                End poll
-              </Button>
-            ) : (
-              <div className="flex gap-2">
-                {snap.state === 'ended' && (
-                  <Button variant="outline" size="sm" disabled={busy} onClick={() => act(() => window.GOTPoll.poll.reset())}>
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    Clear
-                  </Button>
+      <div className="flex h-[calc(100vh-56px)] min-h-0 gap-3 px-3 pb-3">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+          {/* ---------------- poll card */}
+          <section className="bg-card/60 rounded-xl border">
+            <div className="flex items-center gap-4 p-4">
+              <StateBadge state={snap.state} />
+              <div className="font-mono text-2xl font-semibold tabular-nums">{time ?? '00:00:00'}</div>
+              <div className="text-muted-foreground flex items-center gap-4 text-xs">
+                <Stat value={snap.totalVotes} label="votes" />
+                <Stat value={snap.totalVoters} label="viewers" />
+                <Stat value={snap.messages} label="messages" />
+                {snap.filteredVotes > 0 && (
+                  <span title="Votes for shows the filters leave out – not counted">
+                    <Stat value={snap.filteredVotes} label="filtered" />
+                  </span>
                 )}
-                <Button size="sm" disabled={busy} onClick={() => act(() => window.GOTPoll.poll.start([...formats]))}>
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-current" />}
-                  {snap.state === 'ended' ? 'New poll' : 'Start poll'}
+              </div>
+              <div className="grow" />
+              {running ? (
+                <Button variant="destructive" disabled={busy} onClick={() => act(() => window.GOTPoll.poll.stop())}>
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-3.5 w-3.5 fill-current" />}
+                  End poll
                 </Button>
+              ) : (
+                <div className="flex gap-2">
+                  {snap.state === 'ended' && (
+                    <Button variant="outline" disabled={busy} onClick={() => act(() => window.GOTPoll.poll.reset())}>
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Clear
+                    </Button>
+                  )}
+                  <Button disabled={busy || !filters} onClick={() => filters && act(() => window.GOTPoll.poll.start(filters))}>
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-current" />}
+                    {snap.state === 'ended' ? 'New poll' : 'Start poll'}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {filters && (
+              <div className="flex flex-wrap items-start gap-x-8 gap-y-3 border-t px-4 py-3">
+                <FilterGroup label="Format">
+                  {FORMATS.map((f) => (
+                    <FilterChip
+                      key={f.id}
+                      on={filters.formats.includes(f.id)}
+                      disabled={running}
+                      onClick={() => toggle('formats', f.id)}
+                    >
+                      {f.label}
+                    </FilterChip>
+                  ))}
+                </FilterGroup>
+                <FilterGroup
+                  label="Release"
+                  note={
+                    !snap.releaseKnown ? (
+                      <Link to="/settings" className="text-amber-600 hover:underline dark:text-amber-400">
+                        Update the catalog to use this
+                      </Link>
+                    ) : undefined
+                  }
+                >
+                  {RELEASES.map((r) => (
+                    <FilterChip
+                      key={r.id}
+                      title={r.hint}
+                      on={filters.release.includes(r.id)}
+                      disabled={running || !snap.releaseKnown}
+                      onClick={() => toggle('release', r.id)}
+                    >
+                      {r.label}
+                    </FilterChip>
+                  ))}
+                </FilterGroup>
+                <FilterGroup label="Chat">
+                  {snap.sources.filter((c) => c.enabled).length ? (
+                    snap.sources.filter((c) => c.enabled).map((c) => <Source key={c.id} channel={c} />)
+                  ) : (
+                    <Link to="/settings" className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline">
+                      No channels yet – add one in Settings
+                    </Link>
+                  )}
+                </FilterGroup>
+                {running && <span className="text-muted-foreground self-end text-[11px]">Filters are locked while the poll is live</span>}
               </div>
             )}
-          </div>
+          </section>
 
           <AnimatePresence>
             {snap.catalogPending && (
@@ -158,7 +204,7 @@ export default function Home() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="flex items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-700 dark:text-sky-300"
+                className="flex items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-700 dark:text-sky-300"
               >
                 <Info className="h-4 w-4" />
                 The catalog was updated. This poll keeps counting with the list it started with – the new one applies to
@@ -167,12 +213,24 @@ export default function Home() {
             )}
           </AnimatePresence>
 
-          {/* ranking */}
-          <div className="bg-card/40 min-h-0 flex-1 overflow-y-auto rounded-lg border p-1">
+          {/* ---------------- ranking */}
+          <section className="bg-card/60 flex min-h-0 flex-1 flex-col rounded-xl border">
+            <div className="flex items-center gap-2 border-b px-4 py-2.5">
+              <Trophy className="h-4 w-4 opacity-70" />
+              <h2 className="text-sm font-semibold">Ranking</h2>
+              {snap.ranking.length > 0 && <span className="text-muted-foreground text-xs">{snap.ranking.length} shows</span>}
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {snap.ranking.length === 0 ? (
-              <div className="text-muted-foreground grid h-full place-items-center text-sm">
-                {running ? 'Waiting for votes…' : 'Start a poll to count chat votes.'}
-              </div>
+              <EmptyState
+                icon={running ? Radio : Trophy}
+                title={running ? 'Listening to chat…' : snap.state === 'ended' ? 'No votes this time' : 'Ready when you are'}
+                text={
+                  running
+                    ? 'Votes appear here as viewers type anime titles.'
+                    : 'Pick what counts above, then start the poll. Votes show up here live.'
+                }
+              />
             ) : (
               <LayoutGroup>
                 <ol>
@@ -234,10 +292,13 @@ export default function Home() {
                 </ol>
               </LayoutGroup>
             )}
-          </div>
+            </div>
+          </section>
         </div>
 
-        <UnmatchedPanel phrases={snap.unmatched} onAssign={(p) => setAssigning({ phrase: p, current: null })} />
+        <aside className="flex w-[300px] shrink-0 flex-col">
+          <UnmatchedPanel phrases={snap.unmatched} onAssign={(p) => setAssigning({ phrase: p, current: null })} />
+        </aside>
       </div>
 
       <AssignDialog
@@ -290,19 +351,6 @@ export default function Home() {
   );
 }
 
-function StateChip({ state }: { state: PollState }) {
-  const map = {
-    idle: { label: 'Idle', cls: 'bg-muted text-muted-foreground' },
-    running: { label: 'Live', cls: 'bg-rose-500/15 text-rose-600 dark:text-rose-400' },
-    ended: { label: 'Ended', cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' },
-  }[state];
-  return (
-    <span className={cn('flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold', map.cls)}>
-      {state === 'running' && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
-      {map.label}
-    </span>
-  );
-}
 
 function Source({ channel }: { channel: ChannelState }) {
   const { status } = channel;
@@ -312,7 +360,6 @@ function Source({ channel }: { channel: ChannelState }) {
     const t = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(t);
   }, [status.retryAt]);
-  if (status.state === 'off') return null;
   const dot = {
     off: 'bg-muted-foreground/40',
     connecting: 'bg-amber-400 animate-pulse',
@@ -373,5 +420,89 @@ function ShareButton() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+
+function StateBadge({ state }: { state: PollState }) {
+  const map = {
+    idle: { label: 'Ready', dot: 'bg-muted-foreground/50', cls: 'text-muted-foreground' },
+    running: { label: 'Live', dot: 'bg-rose-500 animate-pulse', cls: 'text-rose-600 dark:text-rose-400' },
+    ended: { label: 'Ended', dot: 'bg-emerald-500', cls: 'text-emerald-600 dark:text-emerald-400' },
+  }[state];
+  return (
+    <span className={cn('bg-foreground/5 flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold', map.cls)}>
+      <span className={cn('h-2 w-2 rounded-full', map.dot)} />
+      {map.label}
+    </span>
+  );
+}
+
+function Stat({ value, label }: { value: number; label: string }) {
+  return (
+    <span className="tabular-nums">
+      <b className="text-foreground text-sm">{value.toLocaleString()}</b> {label}
+    </span>
+  );
+}
+
+function FilterGroup({ label, note, children }: { label: string; note?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="text-muted-foreground flex items-center gap-2 text-[11px] font-medium tracking-wide uppercase">
+        {label}
+        {note && <span className="text-[11px] font-normal tracking-normal normal-case">· {note}</span>}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">{children}</div>
+    </div>
+  );
+}
+
+/** Toggle chip: clearly filled when on, outlined when off. */
+function FilterChip({
+  on,
+  disabled,
+  onClick,
+  title,
+  children,
+}: {
+  on: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      disabled={disabled}
+      onClick={onClick}
+      aria-pressed={on}
+      className={cn(
+        'flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-all',
+        on
+          ? 'border-foreground bg-foreground text-background'
+          : 'border-foreground/15 text-muted-foreground hover:border-foreground/40 hover:text-foreground',
+        disabled && 'cursor-not-allowed opacity-50'
+      )}
+    >
+      {on && <Check className="h-3 w-3" />}
+      {children}
+    </button>
+  );
+}
+
+function EmptyState({ icon: Icon, title, text }: { icon: typeof Trophy; title: string; text: string }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+      <div className="bg-foreground/5 grid h-14 w-14 place-items-center rounded-2xl">
+        <Icon className="text-muted-foreground h-6 w-6" />
+      </div>
+      <div>
+        <div className="font-semibold">{title}</div>
+        <p className="text-muted-foreground mt-1 max-w-xs text-sm">{text}</p>
+      </div>
+    </div>
   );
 }
