@@ -1,5 +1,6 @@
 import { createContext, use, useEffect, useMemo, useState } from 'react';
 import ThemeSwitcher from './theme-switcher';
+import GlassSwitcher from './glass-switcher';
 
 type TitleBarContentContextType = {
   title: React.ReactNode;
@@ -65,6 +66,7 @@ export default function TitleBar() {
           <div className="w-14 shrink-0" />
         )}
         <div className="flex grow flex-row items-center">{title}</div>
+        {isElectron && <GlassSwitcher className="pointer-events-auto shrink-0 [app-region:no-drag]" />}
         <ThemeSwitcher className="pointer-events-auto shrink-0 [app-region:no-drag]" />
         {isWindowControlInEnd && isElectron && (
           <div className="w-32 shrink-0" />

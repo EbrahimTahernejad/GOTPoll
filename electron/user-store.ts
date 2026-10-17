@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS: Settings = {
   // no channels baked in – the streamer adds theirs in Settings → Channels
   channels: [],
   pollTitle: 'Anime Poll',
+  glass: true,
   pollFilters: { formats: ['TV', 'TV_SHORT', 'MOVIE'], release: ['released', 'airing', 'upcoming'] },
   tunnelProvider: 'cloudflare',
   ngrokToken: '',
@@ -148,6 +149,7 @@ export class UserStore {
     if (stored.pollFilters && Array.isArray(stored.pollFilters.formats) && Array.isArray(stored.pollFilters.release)) {
       out.pollFilters = cleanFilters(stored.pollFilters);
     }
+    if (typeof stored.glass === 'boolean') out.glass = stored.glass;
     if (typeof stored.pollTitle === 'string' && stored.pollTitle.trim()) out.pollTitle = stored.pollTitle.trim().slice(0, 60);
     if (['classic', 'vector', 'hybrid', 'hybrid-llm', 'precise-hybrid-llm', 'precise-llm'].includes(stored.matcherStrategy)) out.matcherStrategy = stored.matcherStrategy;
     if (['minilm', 'e5'].includes(stored.embedModel)) out.embedModel = stored.embedModel;

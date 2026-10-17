@@ -128,6 +128,11 @@
   html.not-electron body {
     @apply bg-secondary;
   }
+  /* glass off: a solid window instead of the OS blur showing through */
+  html.no-glass,
+  html.no-glass body {
+    background-color: var(--background);
+  }
 }
 
 .ag-root-wrapper {
@@ -223,4 +228,13 @@ html.live-page body {
   .live-leader {
     animation: none;
   }
+}
+
+/* glass off: dialogs become solid panels */
+html.no-glass [data-slot='dialog-content'] {
+  backdrop-filter: none;
+  background-color: var(--background);
+}
+html.no-glass [data-slot='dialog-overlay'] {
+  backdrop-filter: none;
 }

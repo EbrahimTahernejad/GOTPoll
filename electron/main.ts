@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import './ipc.js';
 import { port } from './server.js';
-import { catalog, poll, prepareAi, warmUpRumble } from './services.js';
+import { catalog, poll, prepareAi, user, warmUpRumble } from './services.js';
 import { autoStartTunnel, stopTunnel } from './sharing.js';
 
 const dirname = path.resolve(fileURLToPath(import.meta.url), '..');
@@ -33,10 +33,14 @@ function createWindow() {
       sandbox: false,
       webviewTag: true,
     },
-    vibrancy: 'under-window',
+    // the window stays transparent either way (that can't change at
+    // runtime); with glass off the effect is dropped and the page paints a
+    // solid background over it
+    ...(user.settings().glass
+      ? { vibrancy: 'under-window' as const, backgroundMaterial: 'mica' as const }
+      : { backgroundMaterial: 'none' as const }),
     visualEffectState: 'active',
     backgroundColor: '#00000000',
-    backgroundMaterial: 'mica',
   });
 
   // This fixes and electron bug that shows a phantom title bar
@@ -89,6 +93,18 @@ function createWindow() {
   });
 }
 
+/** Turn the OS blur behind the window on or off. */
+function applyGlass(win: BrowserWindow | null, on: boolean) {
+  if (!win || win.isDestroyed()) return;
+  if (process.platform === 'darwin') win.setVibrancy(on ? 'under-window' : null);
+  if (process.platform === 'win32') win.setBackgroundMaterial(on ? 'acrylic' : 'none');
+}
+
+ipcMain.handle('setGlass', (_, on: boolean) => {
+  user.setSettings({ glass: !!on });
+  applyGlass(electronWindow, !!on);
+});
+
 ipcMain.handle('setTheme', (_, theme: 'light' | 'dark' | 'system') => {
   console.log('Setting theme to', theme);
   nativeTheme.themeSource = theme;
@@ -124,7 +140,7 @@ app.whenReady().then(() => {
   }, 3_000).unref();
 
   if (process.platform === 'win32') {
-    electronWindow?.setBackgroundMaterial('acrylic');
+    if (user.settings().glass) electronWindow?.setBackgroundMaterial('acrylic');
   }
 
   app.on('activate', () => {

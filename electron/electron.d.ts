@@ -180,6 +180,8 @@ declare global {
     tunnelAutoStart: boolean;
     /** shown on the app and the viewer page */
     pollTitle: string;
+    /** translucent window and dialogs */
+    glass: boolean;
     /** last used poll filters */
     pollFilters: PollFilters;
     /** how chat is matched to shows – all local and free */
@@ -211,6 +213,8 @@ declare global {
   interface Window {
     GOTPoll: {
       setTheme: (theme: 'light' | 'dark' | 'system') => Promise<boolean>;
+      /** translucent window + dialogs (true) or solid (false); saved */
+      setGlass: (on: boolean) => Promise<void>;
       getServerPort: () => Promise<number>;
       openExternal: (url: string) => Promise<void>;
       catalog: {

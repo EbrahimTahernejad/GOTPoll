@@ -12,6 +12,7 @@ function subscribe<T>(channel: string, cb: (payload: T) => void) {
 
 const api: Window['GOTPoll'] = {
   setTheme: (theme) => invoke('setTheme', theme),
+  setGlass: (on) => invoke('setGlass', on),
   getServerPort: () => invoke('getServerPort'),
   openExternal: (url) => invoke('openExternal', url),
   catalog: {
