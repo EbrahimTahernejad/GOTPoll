@@ -140,7 +140,9 @@ export class TunnelManager extends EventEmitter<{ status: [TunnelStatus] }> {
     await new Promise<void>((resolve, reject) => {
       const child: ChildProcess = spawn(
         bin,
-        ['tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${this.targetPort()}`],
+        // HTTP/2 over TCP 443 instead of the default QUIC: many networks
+        // throttle UDP – measured 20 KB/s over QUIC vs 430 KB/s over HTTP/2
+        ['tunnel', '--no-autoupdate', '--protocol', 'http2', '--url', `http://127.0.0.1:${this.targetPort()}`],
         { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }
       );
       let url: string | null = null;

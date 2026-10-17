@@ -20,10 +20,13 @@ test('everything else is private', () => {
   for (const m of ['POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']) assert.ok(!isPublicRequest(m, '/api/counts'), m);
 });
 
-test('dev builds also expose the Vite module graph (and nothing more)', () => {
-  assert.ok(isPublicRequest('GET', '/@vite/client', true));
-  assert.ok(isPublicRequest('GET', '/app/root.tsx', true));
-  assert.ok(!isPublicRequest('GET', '/api/dev/capture', true));
+test('dev builds also serve Vite modules, but never the API', () => {
+  for (const u of ['/@vite/client', '/app/root.tsx', '/node_modules/.pnpm/@react-router+dev@7/node_modules/@react-router/dev/dist/config/defaults/entry.client.tsx', '/node_modules/.pnpm/vite@6/node_modules/vite/dist/client/env.mjs']) {
+    assert.ok(isPublicRequest('GET', u, true), u);
+  }
+  for (const u of ['/api/dev/capture', '/api/dev/sim?rate=1']) assert.ok(!isPublicRequest('GET', u, true), u);
+  assert.ok(isPublicRequest('GET', '/api/counts', true));
+  assert.ok(!isPublicRequest('POST', '/app/root.tsx', true));
 });
 
 test('only the live feed can upgrade to a websocket', () => {
