@@ -7,12 +7,14 @@ import {
   Play,
   RotateCcw,
   Settings2,
+  Share2,
   Square,
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { CatalogPill } from '~/components/app/catalog-status';
+import { ShareLinks, useShare } from '~/components/share/share-panel';
 import { TitleBarContent } from '~/components/app/title-bar';
 import AssignDialog from '~/components/poll/assign-dialog';
 import PhrasesDialog from '~/components/poll/phrases-dialog';
@@ -86,18 +88,7 @@ export default function Home() {
         <div className="grow" />
         <div className="mr-2 flex items-center gap-2">
           <CatalogPill />
-          {port && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="pointer-events-auto [app-region:no-drag]"
-              onClick={() => window.GOTPoll.openExternal(`http://localhost:${port}`)}
-              title={`http://localhost:${port} – add as an OBS browser source`}
-            >
-              <ExternalLink className="h-4 w-4" />
-              Viewer page
-            </Button>
-          )}
+          <ShareButton />
           <Button variant="ghost" size="icon" asChild className="pointer-events-auto [app-region:no-drag]">
             <Link to="/settings">
               <Settings2 className="h-4 w-4" />
@@ -349,5 +340,38 @@ function Source({ channel }: { channel: ChannelState }) {
       <span className={cn('h-1.5 w-1.5 rounded-full', dot)} />
       {status.state !== 'live' && detail && <span className="text-muted-foreground max-w-36 truncate">{detail}</span>}
     </span>
+  );
+}
+
+/** Title-bar "Share" button: viewer page links + the public link toggle. */
+function ShareButton() {
+  const info = useShare();
+  const [open, setOpen] = useState(false);
+  const online = info?.tunnel.state === 'online';
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="pointer-events-auto [app-region:no-drag]"
+        onClick={() => setOpen(true)}
+        title="Viewer page links"
+      >
+        <span className="relative">
+          <Share2 className="h-4 w-4" />
+          {online && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+        </span>
+        Share
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Share the viewer page</DialogTitle>
+            <DialogDescription>The live ranking and final reveal – read-only, nothing else in the app.</DialogDescription>
+          </DialogHeader>
+          {info && <ShareLinks info={info} />}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

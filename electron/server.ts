@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import { createServer } from 'node:http';
+import { deflateRawSync } from 'node:zlib';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import isDev from 'electron-is-dev';
 import path from 'node:path';
@@ -7,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import getFreePort from 'get-port';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { poll } from './services.js';
+import { isPublicRequest, isPublicUpgrade } from './tunnel/allowlist.js';
 
 // Viewer page server (OBS browser source / second screen).
 //   GET  /            the live ranking page
@@ -119,21 +121,36 @@ if (viteProxy) {
 }
 
 // ---- websocket
-const wss = new WebSocketServer({ noServer: true });
+// permessage-deflate: snapshots are repetitive JSON (~9 KB → ~2.5 KB), which
+// matters once viewers come in through a metered tunnel.
+const wss = new WebSocketServer({
+  noServer: true,
+  perMessageDeflate: { zlibDeflateOptions: { level: 6 }, threshold: 512 },
+});
 const alive = new WeakMap<WebSocket, boolean>();
+// Clients that asked for ?z=1 get deflate-raw binary frames. Unlike the
+// permessage-deflate extension, this survives tunnels (Cloudflare's edge
+// strips WebSocket extensions) – browsers inflate with DecompressionStream.
+const packed = new WeakSet<WebSocket>();
 let last = JSON.stringify({ type: 'snapshot', data: poll.publicSnapshot() });
+let lastZ: Buffer | null = null;
+const deflated = () => (lastZ ??= deflateRawSync(last, { level: 6 }));
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   alive.set(ws, true);
   ws.on('pong', () => alive.set(ws, true));
-  ws.send(last);
+  if (new URL(req.url ?? '/', 'http://x').searchParams.get('z') === '1') packed.add(ws);
+  ws.send(packed.has(ws) ? deflated() : last);
 });
 
 poll.on('update', (s) => {
   const msg = JSON.stringify({ type: 'snapshot', data: poll.publicSnapshot(s) });
   if (msg === last) return;
   last = msg;
-  for (const ws of wss.clients) if (ws.readyState === ws.OPEN) ws.send(msg);
+  lastZ = null;
+  for (const ws of wss.clients) {
+    if (ws.readyState === ws.OPEN) ws.send(packed.has(ws) ? deflated() : msg);
+  }
 });
 
 // drop clients that vanished without closing (sleeping laptops, OBS reloads)
@@ -160,4 +177,39 @@ server.on('upgrade', (req, socket, head) => {
 
 server.listen(port, () => {
   console.log(`Viewer page on http://localhost:${port}`);
+});
+
+// ---- public server (what tunnels point at)
+// Loopback only, random port, read-only: the viewer page, its assets, the
+// counts API and the live feed. Settings, dev endpoints, Vite HMR – 404.
+const pub = express();
+pub.disable('x-powered-by');
+pub.use((req, res, next) => {
+  if (!isPublicRequest(req.method, req.originalUrl, isDev)) {
+    res.status(404).type('text/plain').send('Not found');
+    return;
+  }
+  res.setHeader('X-Robots-Tag', 'noindex');
+  next();
+});
+pub.get('/api/counts', (_req: Request, res: Response) => {
+  res.json(poll.publicSnapshot());
+});
+if (viteProxy) {
+  pub.use('/', viteProxy);
+} else {
+  pub.use(express.static(path.join(dirname, '../client/')));
+  pub.use((_req: Request, res: Response) => res.sendFile(path.join(dirname, '../client/index.html')));
+}
+const publicServer = createServer(pub);
+publicServer.on('upgrade', (req, socket, head) => {
+  if (req.url && isPublicUpgrade(req.url)) {
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  } else {
+    socket.destroy();
+  }
+});
+export const publicPort = await getFreePort();
+publicServer.listen(publicPort, '127.0.0.1', () => {
+  console.log(`Public (tunnel) server on http://127.0.0.1:${publicPort}`);
 });

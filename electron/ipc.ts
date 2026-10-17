@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain, shell } from 'electron';
 import { describeChannel, testChannel } from './poll/sources/factory.js';
+import { shareInfo, startTunnel, stopTunnel, tunnel } from './sharing.js';
 import { ai, catalog, hardware, poll, prepareAi, probe, search, sourceDeps, user, warmUpRumble } from './services.js';
 
 const broadcast = (channel: string, payload: unknown) => {
@@ -10,6 +11,12 @@ catalog.on('status', (s) => broadcast('catalog:status', s));
 catalog.on('changed', (info) => broadcast('catalog:changed', info));
 poll.on('update', (s) => broadcast('poll:update', s));
 ai.on('status', (s) => broadcast('ai:status', s));
+tunnel.on('status', (s) => broadcast('share:status', s));
+
+// ---- sharing the viewer page
+ipcMain.handle('share:info', () => shareInfo());
+ipcMain.handle('share:start', () => startTunnel());
+ipcMain.handle('share:stop', () => stopTunnel());
 ai.on('packs', (p) => broadcast('ai:packs', p));
 
 // ---- local AI (free, offline models)
@@ -56,6 +63,8 @@ ipcMain.handle('settings:get', () => user.settings());
 ipcMain.handle('settings:set', (_, patch: Partial<Settings>) => {
   const next = user.setSettings(patch);
   if ('matcherStrategy' in patch || 'embedModel' in patch || 'llmModel' in patch) void prepareAi();
+  // switching provider / token while online: reopen with the new settings
+  if (('tunnelProvider' in patch || 'ngrokToken' in patch) && tunnel.running) void startTunnel();
   if ('channels' in patch) {
     poll.applyChannels(); // connect / disconnect live, mid-poll
     warmUpRumble();

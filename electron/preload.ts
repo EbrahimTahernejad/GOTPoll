@@ -60,6 +60,12 @@ const api: Window['GOTPoll'] = {
     onStatus: (cb) => subscribe('ai:status', cb),
     onPacks: (cb) => subscribe('ai:packs', cb),
   },
+  share: {
+    info: () => invoke('share:info'),
+    start: () => invoke('share:start'),
+    stop: () => invoke('share:stop'),
+    onStatus: (cb) => subscribe('share:status', cb),
+  },
   channels: {
     describe: (platform, input) => invoke('channels:describe', platform, input),
     test: (channel) => invoke('channels:test', channel),

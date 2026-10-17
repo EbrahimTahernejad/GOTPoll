@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronLeft, Database, FlaskConical, ListChecks, MessagesSquare, Sparkles, Trash2, Vote } from 'lucide-react';
+import { ChevronLeft, Database, FlaskConical, Globe, ListChecks, MessagesSquare, Sparkles, Trash2, Vote } from 'lucide-react';
+import { SharingSettings } from '~/components/share/share-panel';
 import AiSection from '~/components/settings/ai-section';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -19,6 +20,7 @@ const SECTIONS = [
   { id: 'channels', label: 'Channels', icon: MessagesSquare, hint: 'Twitch · YouTube · Rumble' },
   { id: 'matching', label: 'Matching', icon: FlaskConical, hint: 'Test messages, taught phrases' },
   { id: 'ai', label: 'Local AI', icon: Sparkles, hint: 'Strategy, models, GPU' },
+  { id: 'sharing', label: 'Sharing', icon: Globe, hint: 'Viewer page links, public link' },
   { id: 'voting', label: 'Voting rules', icon: Vote, hint: 'Who counts, how often' },
   { id: 'catalog', label: 'Catalog', icon: Database, hint: 'AniList show list' },
   { id: 'shows', label: 'Shows', icon: ListChecks, hint: 'Hide shows from polls' },
@@ -115,6 +117,12 @@ export default function SettingsPage() {
               <div className="max-w-5xl space-y-4">
                 <SectionTitle title="Local AI" text="Optional smarter matching with free models that run on your machine." />
                 <AiSection />
+              </div>
+            )}
+            {section === 'sharing' && (
+              <div className="max-w-3xl space-y-4">
+                <SectionTitle title="Sharing" text="Where the viewer page can be opened – this PC, your network, or a public link." />
+                <SharingSettings />
               </div>
             )}
             {section === 'voting' && <VotingSection running={poll.state === 'running'} />}

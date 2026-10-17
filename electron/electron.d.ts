@@ -141,8 +141,32 @@ declare global {
     recommended: string;
   };
 
+  type TunnelProvider = 'cloudflare' | 'ngrok';
+
+  type TunnelStatus = {
+    provider: TunnelProvider;
+    state: 'off' | 'installing' | 'starting' | 'online' | 'reconnecting' | 'error';
+    url: string | null;
+    detail?: string;
+    progress?: number;
+  };
+
+  type ShareInfo = {
+    /** this PC (OBS on the same machine) */
+    localUrl: string;
+    /** other devices on the same network */
+    lanUrls: string[];
+    tunnel: TunnelStatus;
+  };
+
   type Settings = {
     channels: ChannelConfig[];
+    /** public link provider – cloudflare needs no account */
+    tunnelProvider: TunnelProvider;
+    /** the streamer's own ngrok authtoken; stays in the local settings db */
+    ngrokToken: string;
+    /** open the public link when the app starts */
+    tunnelAutoStart: boolean;
     /** shown on the app and the viewer page */
     pollTitle: string;
     /** how chat is matched to shows – all local and free */
@@ -224,6 +248,12 @@ declare global {
         prepare: () => Promise<void>;
         onStatus: (cb: (s: { embed: AiPartStatus; llm: AiPartStatus }) => void) => () => void;
         onPacks: (cb: (p: AiPack[]) => void) => () => void;
+      };
+      share: {
+        info: () => Promise<ShareInfo>;
+        start: () => Promise<void>;
+        stop: () => Promise<void>;
+        onStatus: (cb: (s: TunnelStatus) => void) => () => void;
       };
       channels: {
         /** parse what the user typed: normalised target + a friendly name, or an error */

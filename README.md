@@ -17,6 +17,20 @@ pnpm build        # Windows installer (electron-builder)
 - **Live**: pushed over a WebSocket (`/ws`), so updates are instant. Counts spring-animate, "+N" pops appear on new votes, rank arrows show movement, and covers fly between positions. Rows re-sort at most every 1.2 s so bursts of chat don't make it jitter. The background is a blurred version of the current leader's cover.
 - **Final**: when you end the poll the page runs a reveal: "POLL CLOSED" → 3rd → 2nd → drumroll → WINNER with confetti → the rest of the standings. Press **R** on the page to replay it.
 
+## Sharing the viewer page
+
+The **Share** button (title bar) and Settings → **Sharing** list every address the viewer page works at:
+
+- **This PC**: `http://localhost:4747`, for OBS on the same computer.
+- **Your network**: e.g. `http://192.168.1.10:4747`, for a second PC or a phone.
+- **Public link**: one click on **Go public**.
+  - **Cloudflare Quick Tunnel** (default): free, no account, no key. The app downloads the official `cloudflared` once. You get a random `*.trycloudflare.com` address that changes each time, and up to ~200 simultaneous viewers.
+  - **ngrok** (optional): paste your own free authtoken (stored only on this computer) for an address that stays the same. On ngrok's free plan, browsers see a one-click notice first and traffic is capped at 1 GB/month.
+
+The public link points at a separate loopback-only server that serves **only** the read-only viewer page, its assets, `/api/counts` and the `/ws` feed. Settings, controls and dev endpoints return 404 from the internet. The live feed is deflate-compressed inside the app (~9 KB → ~2.5 KB per update), because tunnels strip WebSocket compression.
+
+`pnpm test:tunnel <publicPort>` opens a real tunnel to a running app and checks all of that from the outside.
+
 ## Chat sources: no keys, no logins
 
 | | what you enter (Settings → Channels) | how |

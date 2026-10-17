@@ -20,20 +20,33 @@ export default function useLiveRanking() {
       .then((s: PublicSnapshot) => setSnap((cur) => cur ?? s))
       .catch(() => {});
 
+    // compressed binary feed when the browser can inflate it (survives tunnels)
+    const canInflate = typeof DecompressionStream !== 'undefined';
+    let order: Promise<void> = Promise.resolve();
+    const decode = async (data: unknown): Promise<string> => {
+      if (typeof data === 'string') return data;
+      const stream = new Blob([data as ArrayBuffer]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      return new Response(stream).text();
+    };
+
     const connect = () => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws = new WebSocket(`${proto}://${location.host}/ws${canInflate ? '?z=1' : ''}`);
+      ws.binaryType = 'arraybuffer';
       ws.onopen = () => {
         attempt = 0;
         setConnected(true);
       };
       ws.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data as string);
-          if (msg.type === 'snapshot') setSnap(msg.data as PublicSnapshot);
-        } catch {
-          // ignore malformed frames
-        }
+        // inflating is async – chain it so snapshots apply in arrival order
+        order = order.then(async () => {
+          try {
+            const msg = JSON.parse(await decode(e.data));
+            if (msg.type === 'snapshot') setSnap(msg.data as PublicSnapshot);
+          } catch {
+            // ignore malformed frames
+          }
+        });
       };
       ws.onclose = () => {
         setConnected(false);

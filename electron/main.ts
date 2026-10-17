@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import './ipc.js';
 import { port } from './server.js';
 import { catalog, poll, prepareAi, warmUpRumble } from './services.js';
+import { autoStartTunnel, stopTunnel } from './sharing.js';
 
 const dirname = path.resolve(fileURLToPath(import.meta.url), '..');
 
@@ -109,6 +110,7 @@ app.whenReady().then(() => {
   createWindow();
   warmUpRumble();
   void prepareAi(); // load the selected AI strategy's models in the background
+  autoStartTunnel();
 
   // Sockets don't survive sleep or a network switch, and often don't notice
   // either. Reconnect every chat source the moment we're back.
@@ -135,6 +137,7 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   poll.stop();
   catalog.cancel(); // the partial file is discarded; the live catalog is untouched
+  void stopTunnel(); // close the public link (and the cloudflared process)
 });
 
 app.on('window-all-closed', () => {

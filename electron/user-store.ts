@@ -11,6 +11,9 @@ const DEFAULT_SETTINGS: Settings = {
   // no channels baked in – the streamer adds theirs in Settings → Channels
   channels: [],
   pollTitle: 'Anime Poll',
+  tunnelProvider: 'cloudflare',
+  ngrokToken: '',
+  tunnelAutoStart: false,
   onePerViewer: false,
   // romaji-aware by default: multilingual embeddings + a local LLM judge.
   // Falls back to classic on its own until the models are downloaded.
@@ -137,6 +140,9 @@ export class UserStore {
     const stored = Object.fromEntries(rows.map((r) => [r.key, JSON.parse(r.value)])) as Record<string, any>;
     const out: Settings = { ...DEFAULT_SETTINGS, channels: [...DEFAULT_SETTINGS.channels] };
     if (typeof stored.onePerViewer === 'boolean') out.onePerViewer = stored.onePerViewer;
+    if (stored.tunnelProvider === 'cloudflare' || stored.tunnelProvider === 'ngrok') out.tunnelProvider = stored.tunnelProvider;
+    if (typeof stored.ngrokToken === 'string') out.ngrokToken = stored.ngrokToken.trim();
+    if (typeof stored.tunnelAutoStart === 'boolean') out.tunnelAutoStart = stored.tunnelAutoStart;
     if (typeof stored.pollTitle === 'string' && stored.pollTitle.trim()) out.pollTitle = stored.pollTitle.trim().slice(0, 60);
     if (['classic', 'vector', 'hybrid', 'hybrid-llm', 'precise-hybrid-llm', 'precise-llm'].includes(stored.matcherStrategy)) out.matcherStrategy = stored.matcherStrategy;
     if (['minilm', 'e5'].includes(stored.embedModel)) out.embedModel = stored.embedModel;
