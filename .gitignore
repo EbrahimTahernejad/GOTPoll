@@ -1,0 +1,15 @@
+.DS_Store
+/node_modules/
+
+# React Router
+/.react-router/
+/build/
+
+# test scratch
+*.partial.db
+assets/*.tmp
+
+# local AI models (downloaded on demand)
+.models/
+.claude/
+*.log
