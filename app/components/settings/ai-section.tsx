@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
 import {
-  Brain,
   Check,
   Crosshair,
   Cpu,
@@ -53,7 +52,8 @@ const STRATEGIES: {
     icon: Sparkles,
     blurb: 'Hybrid, then a local LLM decides the phrases still in doubt.',
     needs: ['embed', 'llm'],
-    stats: { main: '—', hard: '—', ms: 'only on doubts' }, // filled from the benchmark below
+    // with Qwen2.5 7B (what "auto" picks on an 8 GB GPU)
+    stats: { main: '97.5%', hard: '93%', ms: 'only on doubts' },
   },
   {
     id: 'precise-hybrid-llm',

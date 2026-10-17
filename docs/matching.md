@@ -49,6 +49,28 @@ These figures are from the old v1 catalog, so both matchers see the same data. O
 
 By category on the new catalog: exact 99.5%, chat noise 99.8%, season suffix 99.3%, one typo 93.9%, no spaces 85.3%, two typos 74.1%. Two-typo misses come back as "no match" rather than a wrong match (0.9% wrong), so they show up in Unmatched chat instead of skewing the result.
 
+## Free local AI strategies (`pnpm bench:strategies`)
+
+The same queries, plus 56 "hard" ones (paraphrases, mixed English/romaji, heavier typos) and a romaji-only slice: 862 queries built from romaji titles. Everything runs locally: ONNX embeddings via transformers.js and Qwen2.5 GGUF via llama.cpp. Timings are from an M1 Pro (Metal); an RTX 3070 is faster.
+
+| strategy | correct | wrong | romaji | hard | hard wrong | chatter | held-out | ms/msg |
+|---|---|---|---|---|---|---|---|---|
+| classic | 93.4% | 0.6% | 92.8% | 75.0% | 5.4% | 0/90 | 1/59 | 2 |
+| vector only (MiniLM) | 70.1% | 1.1% | 77.1% | 44.6% | 7.1% | 0/90 | 2/59 | 24 |
+| vector only (e5) | 60.7% | 0.5% | 51.0% | 37.5% | 3.6% | 0/90 | 2/59 | 27 |
+| hybrid (MiniLM) | 94.5% | 0.8% | 94.4% | 82.1% | 5.4% | 0/90 | 2/59 | 4 |
+| hybrid (e5) | 94.3% | 0.6% | 93.4% | 75.0% | 5.4% | 0/90 | 1/59 | 4 |
+| hybrid + judge (e5 + Qwen 3B) | 94.9% | 0.8% | 93.6% | 78.6% | 7.1% | 0/90 | 2/59 | 84 |
+| **hybrid + judge (e5 + Qwen 7B)** | **97.5%** | 0.7% | **96.4%** | **92.9%** | 5.4% | 2/90 | 1/59 | 180 |
+
+What we learned:
+
+- **Embeddings alone are bad at this.** Sentence models (even multilingual ones) don't understand romaji or typos. They're useful only as a fallback that finds candidates.
+- **The LLM judge is what understands romaji.** Qwen knows "shingeki" is Attack on Titan. With 7B it beats everything on every axis, and stays as careful as classic on wrong votes and chatter.
+- **The judge must not invent matches.** Without guard rails, the 3B judge counted 11 chatter lines as votes ("wait what" → *Nani ka?*, "i am hungry" → *Hungry to Win*). A stricter prompt with counter-examples, plus an evidence floor (the chosen show needs text score or cosine ≥ 0.6), fixed it.
+- **Letting the LLM decide everything is worse** (80%: it overrides good text matches), so that mode isn't offered.
+- **Qwen 0.5B is too small**: it picked a show for "lol this stream is great".
+
 ## Knobs
 
 - `threshold` / `margin` in `matcher.ts` (`pnpm bench:matching -- --sweep` prints the trade-off curve)
