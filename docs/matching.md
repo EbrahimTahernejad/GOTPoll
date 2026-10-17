@@ -61,7 +61,9 @@ The same queries, plus 56 "hard" ones (paraphrases, mixed English/romaji, heavie
 | hybrid (MiniLM) | 94.5% | 0.8% | 94.4% | 82.1% | 5.4% | 0/90 | 2/59 | 4 |
 | hybrid (e5) | 94.3% | 0.6% | 93.4% | 75.0% | 5.4% | 0/90 | 1/59 | 4 |
 | hybrid + judge (e5 + Qwen 3B) | 94.9% | 0.8% | 93.6% | 78.6% | 7.1% | 0/90 | 2/59 | 84 |
-| **hybrid + judge (e5 + Qwen 7B)** | **97.5%** | 0.7% | **96.4%** | **92.9%** | 5.4% | 2/90 | 1/59 | 180 |
+| **hybrid + judge (e5 + Qwen 7B)** | **97.5%** | 0.7% | **96.4%** | 92.9% | 5.4% | 2/90 | 1/59 | 180 |
+| precise hybrid + AI (e5 + Qwen 7B) | 96.6% | 0.8% | 96.2% | **94.6%** | **3.6%** | 2/90 | 1/59 | 494 |
+| precise + AI (Qwen 7B, no embeddings) | 94.0% | 0.6% | 94.4% | 85.7% | **3.6%** | **0/90** | 1/59 | 437 |
 
 What we learned:
 

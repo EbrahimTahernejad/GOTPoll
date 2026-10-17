@@ -61,7 +61,7 @@ const STRATEGIES: {
     icon: Target,
     blurb: 'Text matching only when highly confident; the LLM decides everything else from text + embedding candidates.',
     needs: ['embed', 'llm'],
-    stats: { main: '—', hard: '—', ms: 'on non-certain' },
+    stats: { main: '96.6%', hard: '95%', ms: 'on non-certain' },
   },
   {
     id: 'precise-llm',
@@ -69,7 +69,7 @@ const STRATEGIES: {
     icon: Crosshair,
     blurb: 'Text matching only when highly confident; the LLM decides the rest. No embedding model needed.',
     needs: ['llm'],
-    stats: { main: '—', hard: '—', ms: 'on non-certain' },
+    stats: { main: '94.0%', hard: '86%', ms: 'on non-certain' },
   },
 ];
 
