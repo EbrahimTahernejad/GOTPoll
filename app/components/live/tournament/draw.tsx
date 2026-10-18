@@ -567,11 +567,12 @@ export default function DrawScreen({ t }: { t: PublicTournament }) {
       const r = ring.getBoundingClientRect();
       const hy = Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * Z;
       const hx = hy * camera.aspect;
-      // filmOffset shifts the frame; undo it so the ball lands on the DOM ring
-      const shiftX = (camera.filmOffset / camera.getFilmWidth()) * 2 * hx;
       const nx = ((r.left - box.left + r.width / 2) / box.width) * 2 - 1;
       const ny = -(((r.top - box.top + r.height / 2) / box.height) * 2 - 1);
-      return out.set(nx * hx + shiftX, ny * hy, -Z);
+      // filmOffset slides the view window by (offset / filmWidth) × near, which
+      // is this much in NDC – undo it so the ball lands right on the DOM ring
+      const ndcShift = camera.filmOffset / camera.getFilmWidth() / (Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
+      return out.set((nx + ndcShift) * hx, ny * hy, -Z);
     };
     const slotScale = (slot: number) => {
       const ring = slotRefs.current[slot];
