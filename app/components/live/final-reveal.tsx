@@ -24,8 +24,9 @@ export default function FinalReveal({
   const [run, setRun] = useState(0);
   const [step, setStep] = useState(0);
   const confetti = useRef<ConfettiHandle>(null);
-  const [first, second, third] = snap.ranking;
-  const rest = snap.ranking.slice(3, 9);
+  const voted = snap.ranking.filter((r) => r.count > 0);
+  const [first, second, third] = voted;
+  const rest = voted.slice(3, 9);
 
   useEffect(() => {
     setStep(0);

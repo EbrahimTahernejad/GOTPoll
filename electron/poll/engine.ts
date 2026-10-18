@@ -6,7 +6,7 @@ import type { UserStore } from '../user-store.js';
 import { sessionFor, type SourceDeps } from './sources/factory.js';
 import type { ChatMessage } from './sources/types.js';
 import { Supervisor } from './supervisor.js';
-import { cleanFilters } from './filters.js';
+import { cleanFilters, cleanShortlist, optionNumber } from './filters.js';
 import { PRECISE_FUZZY, type Strategy } from '../matching/strategies.js';
 
 // Votes are tracked per *phrase* (a cleaned chat message), not per show:
@@ -37,6 +37,10 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
   private startedAt: number | null = null;
   private endedAt: number | null = null;
   private filters: PollFilters = { formats: ['TV', 'TV_SHORT', 'MOVIE'], release: ['released', 'airing', 'upcoming'] };
+  private mode: PollMode = 'open';
+  private shortlist: number[] = [];
+  /** shortlist polls: a forgiving matcher that only knows the options */
+  private optionMatcher: Matcher | null = null;
   private releaseKnown = true;
   private messages = 0;
   private version = 0;
@@ -74,11 +78,14 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
 
   // ------------------------------------------------------------ lifecycle
 
-  async start(filters: PollFilters, opts: { sources?: boolean } = {}) {
+  async start(config: Partial<PollConfig>, opts: { sources?: boolean } = {}) {
     if (this.state === 'running') return;
     this.resetData();
-    this.filters = cleanFilters(filters);
-    this.user.setSettings({ pollFilters: this.filters });
+    this.filters = cleanFilters(config.filters ?? this.filters);
+    this.shortlist = cleanShortlist(config.shortlist ?? []);
+    // a shortlist poll needs options; without them it's an open poll
+    this.mode = config.mode === 'shortlist' && this.shortlist.length ? 'shortlist' : 'open';
+    this.user.setSettings({ pollFilters: this.filters, pollMode: config.mode ?? 'open', pollShortlist: this.shortlist });
     const settings = this.user.settings();
     this.onePerViewer = settings.onePerViewer;
     this.ignored = this.user.ignores();
@@ -98,6 +105,21 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       sequels: this.catalog.sequelAliases().filter((s) => this.shows.has(s.rootId)),
       learned: this.user.aliases().filter((a) => this.shows.has(a.showId)).map((a) => ({ alias: a.phrase, showId: a.showId })),
     });
+
+    this.optionMatcher = null;
+    if (this.mode === 'shortlist') {
+      const options = this.shortlist.flatMap((id) => this.shows.get(id) ?? []);
+      this.shortlist = options.map((s) => s.id); // drop ids no longer in the catalog
+      const ids = new Set(this.shortlist);
+      // with only a few candidates a looser threshold is safe: "frieren s2",
+      // "chainsaw" or a typo should land on the option it obviously means
+      this.optionMatcher = new Matcher({
+        shows: options,
+        sequels: this.catalog.sequelAliases().filter((s) => ids.has(s.rootId)),
+        threshold: 0.6,
+        margin: 0.02,
+      });
+    }
 
     this.strategy = this.deps.makeStrategy?.(this.matcher) ?? null;
     this.pendingAi = 0;
@@ -187,14 +209,38 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
   /** Feed one chat message. Public so tests / simulators can drive it. */
   ingest(m: ChatMessage) {
     if (this.state !== 'running' || !this.matcher) return;
+    // shortlist polls: "2" / "#2" / "!vote 2" is a vote for option 2
+    const num = this.mode === 'shortlist' ? optionNumber(m.text) : null;
+    if (num !== null && num >= 1 && num <= this.shortlist.length) {
+      this.vote(m, `#${num}`, { showId: this.shortlist[num - 1], stage: 'exact', score: 1 });
+      return;
+    }
     const phrase = cleanMessage(m.text);
     if (!phrase || this.dismissed.has(phrase)) return;
     this.messages++;
+    this.vote(m, phrase);
+  }
+
+  /**
+   * Record one viewer saying `phrase`. `preset` skips matching (a number
+   * vote in a shortlist poll already knows its show).
+   */
+  private vote(
+    m: ChatMessage,
+    phrase: string,
+    preset?: { showId: number; stage: MatchStage; score: number }
+  ) {
+    if (preset) this.messages++;
     const voter = `${m.platform}:${m.userId}`;
 
     let bucket = this.buckets.get(phrase);
     if (!bucket) {
-      const hit = this.matcher.match(phrase, this.ignored);
+      // taught phrases first, then the options, then the whole library
+      let hit: { showId: number; stage: MatchStage; score: number } | null = preset ?? null;
+      if (!hit) {
+        const full = this.matcher!.match(phrase, this.ignored);
+        hit = full?.stage === 'learned' ? full : (this.optionMatcher?.match(phrase, this.ignored) ?? full);
+      }
       bucket = {
         sample: m.text.trim().slice(0, 120),
         voters: new Set(),
@@ -204,7 +250,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
         lastAt: 0,
       };
       this.buckets.set(phrase, bucket);
-      if (this.strategy && this.strategy.id !== 'classic') {
+      if (!preset && this.strategy && this.strategy.id !== 'classic') {
         // pure vector replaces classic; hybrids only help where classic gave up
         if (this.strategy.id === 'vector' && bucket.stage !== 'learned') {
           bucket.showId = bucket.stage = bucket.score = null;
@@ -213,7 +259,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
           // not confident enough: hold it back until the LLM decides
           bucket.showId = bucket.stage = bucket.score = null;
           this.resolveWithAi(phrase);
-        } else if (bucket.showId === null && !this.matcher.isChatter(phrase)) {
+        } else if (bucket.showId === null && !this.matcher!.isChatter(phrase)) {
           this.resolveWithAi(phrase);
         }
       }
@@ -384,7 +430,17 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       totalVotes += set.size;
       set.forEach((v) => voters.add(v));
     }
-    ranking.sort((a, b) => b.count - a.count || b.popularity - a.popularity);
+    if (this.mode === 'shortlist') {
+      // every option is on the board from the start, numbered
+      for (const [i, id] of this.shortlist.entries()) {
+        const existing = ranking.find((r) => r.id === id);
+        if (existing) existing.option = i + 1;
+        else if (this.shows.get(id) && !this.ignored.has(id)) ranking.push({ ...this.shows.get(id)!, count: 0, option: i + 1 });
+      }
+      ranking.sort((a, b) => b.count - a.count || (a.option ?? 99) - (b.option ?? 99));
+    } else {
+      ranking.sort((a, b) => b.count - a.count || b.popularity - a.popularity);
+    }
 
     const unmatched = [...this.buckets.entries()]
       .filter(([, b]) => b.showId === null)
@@ -398,6 +454,8 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       startedAt: this.startedAt,
       endedAt: this.endedAt,
       filters: this.filters,
+      mode: this.mode,
+      shortlist: this.shortlist,
       filteredVotes,
       // a running poll keeps what it started with; otherwise ask the catalog now
       releaseKnown: this.state === 'idle' ? this.catalog.info().hasRelease : this.releaseKnown,
@@ -418,6 +476,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
 
   /** Does this show count under the poll's filters? */
   private counts(show: Show) {
+    if (this.mode === 'shortlist') return this.shortlist.includes(show.id);
     if (!this.filters.formats.includes(show.format)) return false;
     // unknown release (old catalog): can't judge – count it
     return show.release === null || this.filters.release.includes(show.release);
@@ -427,6 +486,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     return {
       version: s.version,
       title: this.user.settings().pollTitle,
+      mode: s.mode,
       state: s.state,
       startedAt: s.startedAt,
       endedAt: s.endedAt,
@@ -441,6 +501,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
         format: r.format,
         year: r.startYear,
         count: r.count,
+        option: r.option,
       })),
     };
   }

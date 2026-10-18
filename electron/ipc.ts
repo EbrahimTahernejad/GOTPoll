@@ -46,7 +46,7 @@ ipcMain.handle('catalog:search', (_, query: string, limit?: number) => search(qu
 ipcMain.handle('catalog:probe', (_, message: string) => probe(message));
 
 // ---- poll
-ipcMain.handle('poll:start', (_, filters: PollFilters) => poll.start(filters));
+ipcMain.handle('poll:start', (_, config: PollConfig) => poll.start(config));
 ipcMain.handle('poll:stop', () => poll.stop());
 ipcMain.handle('poll:reset', () => poll.reset());
 ipcMain.handle('poll:snapshot', () => poll.snapshot());

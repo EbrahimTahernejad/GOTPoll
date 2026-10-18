@@ -22,6 +22,7 @@ import { TitleBarContent } from '~/components/app/title-bar';
 import AssignDialog from '~/components/poll/assign-dialog';
 import PhrasesDialog from '~/components/poll/phrases-dialog';
 import UnmatchedPanel from '~/components/poll/unmatched-panel';
+import ShortlistEditor from '~/components/poll/shortlist-editor';
 import { PLATFORMS, PlatformIcon } from '~/components/channels/platforms';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -61,9 +62,27 @@ export default function Home() {
   const time = useLiveTime(snap.startedAt, snap.endedAt);
   const port = useServerPort();
   const [filters, setFilters] = useState<PollFilters | null>(null);
+  const [mode, setMode] = useState<PollMode>('open');
+  const [shortlist, setShortlist] = useState<number[]>([]);
+  const [library, setLibrary] = useState<Map<number, Show>>(new Map());
   useEffect(() => {
-    window.GOTPoll.settings.get().then((s) => setFilters(s.pollFilters));
+    window.GOTPoll.settings.get().then((s) => {
+      setFilters(s.pollFilters);
+      setMode(s.pollMode);
+      setShortlist(s.pollShortlist);
+    });
+    window.GOTPoll.catalog.shows().then((list) => setLibrary(new Map(list.map((x) => [x.id, x]))));
   }, []);
+  // remember edits right away, not only when a poll starts
+  const saveShortlist = (ids: number[]) => {
+    setShortlist(ids);
+    void window.GOTPoll.settings.set({ pollShortlist: ids });
+  };
+  const chooseMode = (m: PollMode) => {
+    setMode(m);
+    void window.GOTPoll.settings.set({ pollMode: m });
+  };
+  const shortlistTooShort = mode === 'shortlist' && shortlist.length < 2;
   const [busy, setBusy] = useState(false);
   const [assigning, setAssigning] = useState<{ phrase: PollPhrase; current: number | null } | null>(null);
   const [inspecting, setInspecting] = useState<RankedShow | null>(null);
@@ -140,7 +159,11 @@ export default function Home() {
                       Clear
                     </Button>
                   )}
-                  <Button disabled={busy || !filters} onClick={() => filters && act(() => window.GOTPoll.poll.start(filters))}>
+                  <Button
+                    disabled={busy || !filters || shortlistTooShort}
+                    title={shortlistTooShort ? 'Add at least two options' : undefined}
+                    onClick={() => filters && act(() => window.GOTPoll.poll.start({ mode, filters, shortlist }))}
+                  >
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-current" />}
                     {snap.state === 'ended' ? 'New poll' : 'Start poll'}
                   </Button>
@@ -150,6 +173,27 @@ export default function Home() {
 
             {filters && (
               <div className="flex flex-wrap items-start gap-x-8 gap-y-3 border-t px-4 py-3">
+                <FilterGroup label="Poll">
+                  <FilterChip on={mode === 'open'} disabled={running} onClick={() => chooseMode('open')} title="Any show in the library">
+                    Open
+                  </FilterChip>
+                  <FilterChip
+                    on={mode === 'shortlist'}
+                    disabled={running}
+                    onClick={() => chooseMode('shortlist')}
+                    title="Only shows you pick – chat can vote by number"
+                  >
+                    Shortlist
+                  </FilterChip>
+                </FilterGroup>
+                {mode === 'shortlist' ? (
+                  <div className="min-w-0 basis-full">
+                    <FilterGroup label={`Options · ${shortlist.length}`}>
+                      <ShortlistEditor ids={shortlist} shows={library} disabled={running} onChange={saveShortlist} />
+                    </FilterGroup>
+                  </div>
+                ) : (
+                <>
                 <FilterGroup label="Format">
                   {FORMATS.map((f) => (
                     <FilterChip
@@ -184,6 +228,8 @@ export default function Home() {
                     </FilterChip>
                   ))}
                 </FilterGroup>
+                </>
+                )}
                 <FilterGroup label="Chat">
                   {snap.sources.filter((c) => c.enabled).length ? (
                     snap.sources.filter((c) => c.enabled).map((c) => <Source key={c.id} channel={c} />)
@@ -258,6 +304,11 @@ export default function Home() {
                         >
                           {i + 1}
                         </span>
+                        {s.option !== undefined && (
+                          <span className="bg-foreground text-background relative grid h-5 min-w-5 place-items-center rounded px-1 text-[10px] font-bold tabular-nums" title={`Chat types ${s.option}`}>
+                            #{s.option}
+                          </span>
+                        )}
                         {s.coverImage ? (
                           <img src={s.coverImage} alt="" className="relative h-11 w-8 shrink-0 rounded object-cover" />
                         ) : (

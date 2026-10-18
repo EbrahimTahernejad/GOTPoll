@@ -36,6 +36,8 @@ if (isDev) {
     ['oshi no ko', 7], ['bocchi', 6], ['mob psycho', 5], ['hxh', 6], ['cyberpunk edgerunners', 5],
     ['steins gate', 5], ['the devil dog one', 3], ['lol', 10], ['W', 8], ['hi chat', 5], ['gg', 5],
     ['the apothecary diaries', 6], ['kusuriya', 3], ['re zero', 5], ['konosuba', 5], ['blue lock', 4],
+    // number votes (count in shortlist polls, plain chat otherwise)
+    ['1', 25], ['2', 22], ['!vote 1', 8], ['#2', 8], ['vote 3', 5],
   ];
   const total = SIM.reduce((n, [, w]) => n + w, 0);
   const pick = () => {
@@ -96,7 +98,8 @@ if (isDev) {
     timer = null;
     if (rate > 0) {
       if (poll.snapshot().state !== 'running') {
-        await poll.start(user.settings().pollFilters, { sources: false });
+        const s = user.settings();
+        await poll.start({ mode: s.pollMode, filters: s.pollFilters, shortlist: s.pollShortlist }, { sources: false });
       }
       timer = setInterval(() => {
         poll.ingest({ platform: 'twitch', userId: `sim${Math.floor(Math.random() * 4000)}`, text: pick() });

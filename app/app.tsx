@@ -14,7 +14,9 @@ export default function App() {
   const [isElectron, setIsElectron] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const electron = window.navigator.userAgent.includes('Electron');
+    // the control UI needs the preload bridge – OBS, browsers and any other
+    // Chromium shell without it get the viewer page
+    const electron = typeof window.GOTPoll !== 'undefined';
     if (!electron) document.documentElement.classList.add('not-electron');
     setIsElectron(electron);
   }, []);

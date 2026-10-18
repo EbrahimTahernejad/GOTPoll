@@ -7,6 +7,8 @@ const EMPTY: PollSnapshot = {
   endedAt: null,
   filters: { formats: ['TV', 'TV_SHORT', 'MOVIE'], release: ['released', 'airing', 'upcoming'] },
   filteredVotes: 0,
+  mode: 'open',
+  shortlist: [],
   releaseKnown: true,
   messages: 0,
   totalVoters: 0,

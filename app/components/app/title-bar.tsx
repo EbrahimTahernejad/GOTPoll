@@ -46,7 +46,7 @@ export default function TitleBar() {
     window.addEventListener('resize', handleResizeScroll);
     window.addEventListener('scroll', handleResizeScroll);
 
-    setIsElectron(window.navigator.userAgent.includes('Electron'));
+    setIsElectron(typeof window.GOTPoll !== 'undefined');
 
     return () => {
       window.removeEventListener('resize', handleResizeScroll);

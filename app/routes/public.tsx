@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import AnimatedNumber from '~/components/live/animated-number';
 import FinalReveal from '~/components/live/final-reveal';
 import Leaderboard from '~/components/live/leaderboard';
+import Versus from '~/components/live/versus';
 import useLiveRanking from '~/hooks/useLiveRanking';
 import useLiveTime from '~/hooks/useLiveTime';
 
@@ -21,6 +22,8 @@ export default function Public() {
   const time = useLiveTime(snap?.startedAt ?? null, snap?.endedAt ?? null);
 
   const state = snap?.state ?? 'idle';
+  const versus = snap?.mode === 'shortlist' && snap.ranking.length === 2;
+  const options = snap?.mode === 'shortlist' ? snap.ranking.length : 0;
   const hasVotes = (snap?.ranking.length ?? 0) > 0;
   const view: 'idle' | 'live' | 'final' =
     state === 'ended' && hasVotes ? 'final' : state === 'idle' ? 'idle' : 'live';
@@ -34,17 +37,25 @@ export default function Public() {
     return () => document.documentElement.classList.remove('live-page');
   }, []);
 
-  const backdrop = view === 'final' ? winner : view === 'live' ? (snap?.ranking[0] ?? null) : null;
+  const backdrop = versus ? null : view === 'final' ? winner : view === 'live' ? (snap?.ranking[0] ?? null) : null;
 
   return (
-    <div className="live-root relative flex min-h-screen w-full flex-col overflow-hidden text-white select-none">
+    // exactly one screen: no scrolling in an OBS source or a fullscreen tab
+    <div className="live-root relative h-screen w-full overflow-hidden text-white select-none">
       {!transparent && <Backdrop entry={backdrop} />}
 
-      <header className="relative z-10 flex items-center gap-[1vw] px-[2.4vw] pt-[1.6vw]">
+      {/* fixed, blurred top bar – content (and the versus art) runs underneath */}
+      <header className="fixed inset-x-0 top-0 z-30 flex items-center gap-[1vw] border-b border-white/[0.06] bg-[#07060d]/40 px-[2.4vw] py-[1.1vw] backdrop-blur-xl backdrop-saturate-150">
         <div className="h-[3.4vw] w-[3.4vw] bg-[url(/icon.png)] bg-cover bg-center bg-no-repeat drop-shadow-xl" />
         <div className="flex flex-col">
           <span className="text-[1.6vw] leading-tight font-black tracking-tight">{snap?.title ?? 'Anime Poll'}</span>
-          <span className="text-[0.85vw] text-white/50">Type an anime title in chat to vote</span>
+          <span className="text-[0.85vw] text-white/50">
+            {state === 'ended'
+              ? 'Final results'
+              : options
+                ? `Type ${options === 2 ? '1 or 2' : `a number 1–${options}`} (or the title) in chat to vote`
+                : 'Type an anime title in chat to vote'}
+          </span>
         </div>
         <div className="grow" />
         {snap && state !== 'idle' && (
@@ -60,7 +71,7 @@ export default function Public() {
         )}
       </header>
 
-      <main className="relative z-10 flex flex-1 flex-col px-[2.4vw] pt-[1.6vw] pb-[1.6vw]">
+      <main className="relative z-10 flex h-full flex-col px-[2.4vw] pt-[7.4vw] pb-[1.6vw]">
         <AnimatePresence mode="wait">
           {/* nothing until the first snapshot – joining mid-poll must not flash the idle screen */}
           {snap && view === 'idle' && (
@@ -84,12 +95,15 @@ export default function Public() {
           {view === 'live' && snap && (
             <motion.div
               key="live"
-              className="flex flex-1 flex-col"
+              // versus fills the whole screen (under the bar); boards sit below it
+              className={versus ? 'absolute inset-0' : 'flex min-h-0 flex-1 flex-col'}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.94, filter: 'blur(16px)', transition: { duration: 0.7 } }}
             >
-              {hasVotes ? (
+              {versus ? (
+                <Versus snap={snap} />
+              ) : hasVotes ? (
                 <Leaderboard snap={snap} />
               ) : (
                 <div className="flex flex-1 flex-col items-center justify-center gap-[1.2vw]">
@@ -109,12 +123,12 @@ export default function Public() {
           {view === 'final' && snap && (
             <motion.div
               key={`final-${snap.endedAt}`}
-              className="flex flex-1 flex-col"
+              className={versus ? 'absolute inset-0' : 'flex min-h-0 flex-1 flex-col'}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              <FinalReveal snap={snap} onWinner={setWinner} />
+              {versus ? <Versus snap={snap} final /> : <FinalReveal snap={snap} onWinner={setWinner} />}
             </motion.div>
           )}
         </AnimatePresence>

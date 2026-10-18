@@ -28,7 +28,7 @@ const api: Window['GOTPoll'] = {
     onChanged: (cb) => subscribe('catalog:changed', cb),
   },
   poll: {
-    start: (filters) => invoke('poll:start', filters),
+    start: (config) => invoke('poll:start', config),
     stop: () => invoke('poll:stop'),
     reset: () => invoke('poll:reset'),
     snapshot: () => invoke('poll:snapshot'),

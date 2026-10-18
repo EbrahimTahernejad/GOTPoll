@@ -27,7 +27,8 @@ declare global {
     custom?: boolean;
   };
 
-  type RankedShow = Show & { count: number };
+  /** option = its number in a shortlist poll (1-based) */
+  type RankedShow = Show & { count: number; option?: number };
 
   type MatchStage = 'exact' | 'token' | 'fuzzy' | 'learned';
 
@@ -50,12 +51,23 @@ declare global {
   /** which shows count in a poll – matching ignores these on purpose */
   type PollFilters = { formats: ShowFormat[]; release: ShowRelease[] };
 
+  /**
+   * open      – any show in the library, narrowed by filters
+   * shortlist – only the picked shows count; chat can vote by number
+   */
+  type PollMode = 'open' | 'shortlist';
+
+  type PollConfig = { mode: PollMode; filters: PollFilters; shortlist: number[] };
+
   type PollSnapshot = {
     version: number;
     state: PollState;
     startedAt: number | null;
     endedAt: number | null;
     filters: PollFilters;
+    mode: PollMode;
+    /** shortlist poll: the option shows, in number order */
+    shortlist: number[];
     /** votes that matched a show the filters leave out (not counted) */
     filteredVotes: number;
     /** the catalog has release status (older catalogs need an update) */
@@ -80,11 +92,14 @@ declare global {
     format: ShowFormat;
     year: number | null;
     count: number;
+    /** shortlist poll: the number chat can type */
+    option?: number;
   };
 
   type PublicSnapshot = {
     version: number;
     title: string;
+    mode: PollMode;
     state: PollState;
     startedAt: number | null;
     endedAt: number | null;
@@ -184,6 +199,9 @@ declare global {
     glass: boolean;
     /** last used poll filters */
     pollFilters: PollFilters;
+    /** last used poll mode and shortlist */
+    pollMode: PollMode;
+    pollShortlist: number[];
     /** how chat is matched to shows – all local and free */
     matcherStrategy: MatcherStrategy;
     embedModel: 'minilm' | 'e5';
@@ -234,7 +252,7 @@ declare global {
         onChanged: (cb: (info: CatalogMeta) => void) => () => void;
       };
       poll: {
-        start: (filters: PollFilters) => Promise<void>;
+        start: (config: PollConfig) => Promise<void>;
         stop: () => Promise<void>;
         reset: () => Promise<void>;
         snapshot: () => Promise<PollSnapshot>;

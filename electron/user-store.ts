@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { cleanFilters } from './poll/filters.js';
+import { cleanFilters, cleanShortlist } from './poll/filters.js';
 
 // Everything the streamer decides lives here, separate from the catalog, so
 // catalog updates/reverts never lose ignores, taught aliases or settings.
@@ -14,6 +14,8 @@ const DEFAULT_SETTINGS: Settings = {
   pollTitle: 'Anime Poll',
   glass: true,
   pollFilters: { formats: ['TV', 'TV_SHORT', 'MOVIE'], release: ['released', 'airing', 'upcoming'] },
+  pollMode: 'open',
+  pollShortlist: [],
   tunnelProvider: 'cloudflare',
   ngrokToken: '',
   tunnelAutoStart: false,
@@ -164,6 +166,8 @@ export class UserStore {
       out.pollFilters = cleanFilters(stored.pollFilters);
     }
     if (typeof stored.glass === 'boolean') out.glass = stored.glass;
+    if (stored.pollMode === 'open' || stored.pollMode === 'shortlist') out.pollMode = stored.pollMode;
+    if (Array.isArray(stored.pollShortlist)) out.pollShortlist = cleanShortlist(stored.pollShortlist);
     if (typeof stored.pollTitle === 'string' && stored.pollTitle.trim()) out.pollTitle = stored.pollTitle.trim().slice(0, 60);
     if (['classic', 'vector', 'hybrid', 'hybrid-llm', 'precise-hybrid-llm', 'precise-llm'].includes(stored.matcherStrategy)) out.matcherStrategy = stored.matcherStrategy;
     if (['minilm', 'e5'].includes(stored.embedModel)) out.embedModel = stored.embedModel;
@@ -190,7 +194,14 @@ export class UserStore {
     this.db.transaction(() => {
       for (const [k, v] of Object.entries(patch)) {
         if (!(k in DEFAULT_SETTINGS) || v === undefined) continue;
-        const clean = k === 'channels' ? cleanChannels(v as ChannelConfig[]) : k === 'pollFilters' ? cleanFilters(v as PollFilters) : v;
+        const clean =
+          k === 'channels'
+            ? cleanChannels(v as ChannelConfig[])
+            : k === 'pollFilters'
+              ? cleanFilters(v as PollFilters)
+              : k === 'pollShortlist'
+                ? cleanShortlist(v as number[])
+                : v;
         stmt.run(k, JSON.stringify(clean));
       }
     })();

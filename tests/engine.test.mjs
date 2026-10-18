@@ -45,7 +45,7 @@ const counts = (e) => Object.fromEntries(e.snapshot().ranking.map((r) => [r.id, 
 
 test('one count per viewer per show, across phrasings', async () => {
   const { engine } = setup();
-  await engine.start(ALL);
+  await engine.start({ mode: 'open', filters: ALL, shortlist: [] });
   say(engine, 'a', 'frieren');
   say(engine, 'a', 'FRIEREN!!!');
   say(engine, 'a', 'sousou no frieren');
@@ -57,7 +57,7 @@ test('one count per viewer per show, across phrasings', async () => {
 
 test('assigning an unmatched phrase recounts everyone who typed it', async () => {
   const { engine, taught } = setup();
-  await engine.start(ALL);
+  await engine.start({ mode: 'open', filters: ALL, shortlist: [] });
   for (const u of ['a', 'b', 'c']) say(engine, u, 'the devil dog one');
   assert.equal(engine.snapshot().unmatched[0].phrase, 'the devil dog one');
   assert.equal(engine.snapshot().unmatched[0].voters, 3);
@@ -71,7 +71,7 @@ test('assigning an unmatched phrase recounts everyone who typed it', async () =>
 
 test('dismissing a phrase removes its votes', async () => {
   const { engine } = setup();
-  await engine.start(ALL);
+  await engine.start({ mode: 'open', filters: ALL, shortlist: [] });
   say(engine, 'a', 'jjk');
   say(engine, 'b', 'jujutsu kaisen');
   engine.dismiss('jjk');
@@ -83,7 +83,7 @@ test('dismissing a phrase removes its votes', async () => {
 
 test('one vote per viewer: latest vote wins', async () => {
   const { engine } = setup({ onePerViewer: true });
-  await engine.start(ALL);
+  await engine.start({ mode: 'open', filters: ALL, shortlist: [] });
   say(engine, 'a', 'frieren');
   say(engine, 'a', 'jjk');
   assert.deepEqual(counts(engine), { 2: 1 });
@@ -92,7 +92,7 @@ test('one vote per viewer: latest vote wins', async () => {
 
 test('ending freezes the count', async () => {
   const { engine } = setup();
-  await engine.start(ALL);
+  await engine.start({ mode: 'open', filters: ALL, shortlist: [] });
   say(engine, 'a', 'chainsaw man');
   engine.stop();
   say(engine, 'b', 'chainsaw man');
@@ -104,7 +104,7 @@ test('ending freezes the count', async () => {
 
 test('filters decide what counts – a filtered vote never drifts onto a look-alike', async () => {
   const { engine } = setup();
-  await engine.start({ formats: ['TV'], release: ['released'] });
+  await engine.start({ mode: 'open', filters: { formats: ['TV'], release: ['released'] }, shortlist: [] });
   say(engine, 'a', 'chainsaw man the movie reze hen'); // upcoming movie: filtered twice over
   say(engine, 'b', 'chainsaw man');
   const s = engine.snapshot();
@@ -116,7 +116,7 @@ test('filters decide what counts – a filtered vote never drifts onto a look-al
 
 test('released means one full first season, whatever its sequels do', async () => {
   const { engine } = setup();
-  await engine.start({ formats: ['TV', 'MOVIE', 'TV_SHORT'], release: ['released'] });
+  await engine.start({ mode: 'open', filters: { formats: ['TV', 'MOVIE', 'TV_SHORT'], release: ['released'] }, shortlist: [] });
   say(engine, 'a', 'sousou no frieren'); // root finished → counts
   assert.deepEqual(counts(engine), { 1: 1 });
   engine.stop();
@@ -124,12 +124,38 @@ test('released means one full first season, whatever its sequels do', async () =
 
 test('a phrase marked "Not a vote" can be restored, even mid-poll', async () => {
   const { engine } = setup();
-  await engine.start(ALL);
+  await engine.start({ mode: 'open', filters: ALL, shortlist: [] });
   engine.dismiss('jjk');
   say(engine, 'a', 'JJK');
   assert.deepEqual(counts(engine), {}, 'dismissed phrase is dropped');
   engine.undismiss('jjk');
   say(engine, 'b', 'jjk');
   assert.deepEqual(counts(engine), { 2: 1 }, 'restored phrase counts again');
+  engine.stop();
+});
+
+test('shortlist: number votes, forgiving option titles, non-options filtered', async () => {
+  const { engine } = setup();
+  await engine.start({ mode: 'shortlist', filters: ALL, shortlist: [3, 1] });
+  say(engine, 'a', '1'); // option 1 = Chainsaw Man
+  say(engine, 'b', '#2'); // option 2 = Frieren
+  say(engine, 'c', '!vote 2');
+  say(engine, 'd', 'vote 1');
+  say(engine, 'e', 'freiren pls'); // typo – resolves to the option
+  say(engine, 'f', 'jjk'); // a real show, but not an option
+  say(engine, 'g', '7'); // no option 7 – just chat
+  const s = engine.snapshot();
+  assert.deepEqual(counts(engine), { 3: 2, 1: 3 });
+  assert.equal(s.filteredVotes, 1, 'jjk is filtered, not pushed onto an option');
+  assert.deepEqual(s.ranking.map((r) => [r.id, r.option]), [[1, 2], [3, 1]]);
+  assert.equal(engine.publicSnapshot(s).ranking[0].option, 2);
+  engine.stop();
+});
+
+test('shortlist: every option shows from the start, at zero', async () => {
+  const { engine } = setup();
+  await engine.start({ mode: 'shortlist', filters: ALL, shortlist: [2, 3] });
+  const s = engine.snapshot();
+  assert.deepEqual(s.ranking.map((r) => [r.id, r.count, r.option]), [[2, 0, 1], [3, 0, 2]]);
   engine.stop();
 });

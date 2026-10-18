@@ -176,6 +176,7 @@ function HeroCard({
       </div>
       <div className="relative flex min-w-0 flex-1 flex-col py-[0.2vw]">
         <div className={cn('line-clamp-2 leading-tight font-bold text-white', lead ? 'text-[1.45vw]' : 'text-[1.15vw]')}>
+          {entry.option !== undefined && <OptionTag n={entry.option} />}
           {entry.title}
         </div>
         {entry.subtitle && <div className="truncate text-[0.8vw] text-white/55">{entry.subtitle}</div>}
@@ -239,7 +240,10 @@ function Row({
       </span>
       <Cover entry={entry} layoutId={`cover-${entry.id}`} className="relative h-[3vw] w-[3vw] shrink-0 rounded-[0.5vw]" />
       <div className="relative min-w-0 flex-1">
-        <div className="truncate text-[1vw] font-semibold text-white">{entry.title}</div>
+        <div className="truncate text-[1vw] font-semibold text-white">
+          {entry.option !== undefined && <OptionTag n={entry.option} />}
+          {entry.title}
+        </div>
         {entry.subtitle && <div className="truncate text-[0.72vw] text-white/45">{entry.subtitle}</div>}
       </div>
       <Move move={move} />
@@ -248,6 +252,15 @@ function Row({
         <Bump count={entry.count} className="right-full top-[0.3vw] mr-[0.5vw]" />
       </span>
     </motion.li>
+  );
+}
+
+/** "type 3" tag in shortlist polls */
+function OptionTag({ n }: { n: number }) {
+  return (
+    <span className="mr-[0.5vw] inline-grid h-[1.4em] min-w-[1.4em] place-items-center rounded-[0.3em] bg-white px-[0.25em] align-[0.1em] text-[0.8em] font-black text-black tabular-nums">
+      {n}
+    </span>
   );
 }
 
