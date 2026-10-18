@@ -49,7 +49,7 @@ export default function PhrasesDialog({
               <Button size="icon" variant="ghost" className="h-7 w-7" title="Count as another show" onClick={() => onReassign(p)}>
                 <Link2 className="h-3.5 w-3.5" />
               </Button>
-              <Button size="icon" variant="ghost" className="h-7 w-7" title="Not a vote" onClick={() => window.GOTPoll.poll.dismiss(p.phrase)}>
+              <Button size="icon" variant="ghost" className="h-7 w-7" title="Not a vote – undo in Settings → Matching" onClick={() => window.GOTPoll.poll.dismiss(p.phrase)}>
                 <Ban className="h-3.5 w-3.5" />
               </Button>
             </li>

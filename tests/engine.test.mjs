@@ -34,6 +34,7 @@ function setup(settings = {}) {
     teach: (phrase, showId) => taught.push([phrase, showId]),
     setSettings: () => {},
     dismiss: () => {},
+    undismiss: () => {},
     setIgnored: () => {},
   };
   const engine = new PollEngine(catalog, user);
@@ -118,5 +119,17 @@ test('released means one full first season, whatever its sequels do', async () =
   await engine.start({ formats: ['TV', 'MOVIE', 'TV_SHORT'], release: ['released'] });
   say(engine, 'a', 'sousou no frieren'); // root finished → counts
   assert.deepEqual(counts(engine), { 1: 1 });
+  engine.stop();
+});
+
+test('a phrase marked "Not a vote" can be restored, even mid-poll', async () => {
+  const { engine } = setup();
+  await engine.start(ALL);
+  engine.dismiss('jjk');
+  say(engine, 'a', 'JJK');
+  assert.deepEqual(counts(engine), {}, 'dismissed phrase is dropped');
+  engine.undismiss('jjk');
+  say(engine, 'b', 'jjk');
+  assert.deepEqual(counts(engine), { 2: 1 }, 'restored phrase counts again');
   engine.stop();
 });

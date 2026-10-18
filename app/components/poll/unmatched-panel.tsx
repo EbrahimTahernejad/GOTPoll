@@ -47,7 +47,7 @@ export default function UnmatchedPanel({
                   size="icon"
                   variant="ghost"
                   className="h-7 w-7"
-                  title="Not a vote"
+                  title="Not a vote – undo in Settings → Matching"
                   onClick={() => window.GOTPoll.poll.dismiss(p.phrase)}
                 >
                   <Ban className="h-3.5 w-3.5" />

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronLeft, Database, FlaskConical, Globe, ListChecks, MessagesSquare, Sparkles, Trash2, Vote } from 'lucide-react';
+import { Ban, ChevronLeft, Database, FlaskConical, Globe, Link2, ListChecks, MessagesSquare, RotateCcw, Sparkles, Trash2, Vote } from 'lucide-react';
 import { SharingSettings } from '~/components/share/share-panel';
 import AiSection from '~/components/settings/ai-section';
 import { useEffect, useState } from 'react';
@@ -23,7 +23,7 @@ const SECTIONS = [
   { id: 'sharing', label: 'Sharing', icon: Globe, hint: 'Viewer page links, public link' },
   { id: 'voting', label: 'Voting rules', icon: Vote, hint: 'Who counts, how often' },
   { id: 'catalog', label: 'Catalog', icon: Database, hint: 'AniList show list' },
-  { id: 'shows', label: 'Shows', icon: ListChecks, hint: 'Hide shows from polls' },
+  { id: 'shows', label: 'Library', icon: ListChecks, hint: 'All shows · hide from polls' },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]['id'];
 
@@ -134,7 +134,7 @@ export default function SettingsPage() {
             )}
             {section === 'shows' && (
               <div className="flex min-h-0 flex-1 flex-col gap-4">
-                <SectionTitle title="Shows" text="Tick “Ignored” to keep a show out of every poll." />
+                <SectionTitle title="Library" text="Every show chat can vote for. Tick “Ignored” to keep one out of every poll." />
                 <ShowsGrid />
               </div>
             )}
@@ -202,10 +202,26 @@ function MatchingTab() {
   const [message, setMessage] = useState('');
   const [probe, setProbe] = useState<MatchProbe | null>(null);
   const [aliases, setAliases] = useState<LearnedAlias[]>([]);
+  const [dismissed, setDismissed] = useState<{ phrase: string; createdAt: number }[]>([]);
   const [shows, setShows] = useState<Map<number, Show>>(new Map());
 
-  useEffect(() => {
+  const reloadPhrases = () => {
     window.GOTPoll.aliases.list().then(setAliases);
+    window.GOTPoll.aliases.dismissed().then(setDismissed);
+  };
+  const restore = async (phrase: string) => {
+    await window.GOTPoll.aliases.restore(phrase);
+    reloadPhrases();
+    if (message.trim()) window.GOTPoll.catalog.probe(message).then(setProbe);
+  };
+  const untaught = async (phrase: string) => {
+    await window.GOTPoll.aliases.remove(phrase);
+    reloadPhrases();
+    if (message.trim()) window.GOTPoll.catalog.probe(message).then(setProbe);
+  };
+
+  useEffect(() => {
+    reloadPhrases();
     window.GOTPoll.catalog.shows().then((s) => setShows(new Map(s.map((x) => [x.id, x]))));
   }, []);
 
@@ -229,7 +245,7 @@ function MatchingTab() {
   return (
     <div className="grid max-w-5xl grid-cols-[1.2fr_1fr] gap-3">
       <div className="col-span-full">
-        <SectionTitle title="Matching" text="Try messages and manage phrases you’ve taught." />
+        <SectionTitle title="Matching" text="Try messages, and manage taught and Not-a-vote phrases." />
       </div>
       <section className="bg-card/60 rounded-xl border p-4">
         <div className="mb-3 flex items-center gap-2">
@@ -247,6 +263,30 @@ function MatchingTab() {
             <div className="text-muted-foreground text-xs">
               cleaned → <code className="bg-muted rounded px-1">{probe.cleaned ?? '(not a vote)'}</code>
             </div>
+            {probe.dismissed && probe.cleaned && (
+              <div className="flex items-center gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs">
+                <Ban className="h-4 w-4 shrink-0 text-rose-500" />
+                <span className="min-w-0 flex-1">
+                  You marked <b>“{probe.cleaned}”</b> as <b>Not a vote</b> – polls drop it before matching, whatever the
+                  result below says.
+                </span>
+                <Button size="sm" variant="outline" onClick={() => restore(probe.cleaned!)}>
+                  Restore
+                </Button>
+              </div>
+            )}
+            {probe.taughtTo !== null && probe.cleaned && (
+              <div className="bg-foreground/5 flex items-center gap-3 rounded-lg border p-3 text-xs">
+                <Link2 className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  Taught: <b>“{probe.cleaned}”</b> always counts as{' '}
+                  <b>{shows.get(probe.taughtTo)?.titleRomaji ?? `#${probe.taughtTo}`}</b>.
+                </span>
+                <Button size="sm" variant="outline" onClick={() => untaught(probe.cleaned!)}>
+                  Forget
+                </Button>
+              </div>
+            )}
             <div
               className={cn(
                 'rounded-lg border p-3',
@@ -316,16 +356,33 @@ function MatchingTab() {
                 size="icon"
                 variant="ghost"
                 className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                onClick={async () => {
-                  await window.GOTPoll.aliases.remove(a.phrase);
-                  setAliases((list) => list.filter((x) => x.phrase !== a.phrase));
-                }}
+                title="Forget"
+                onClick={() => untaught(a.phrase)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </li>
           ))}
           {aliases.length === 0 && <li className="text-muted-foreground py-6 text-center text-xs">Nothing taught yet</li>}
+        </ul>
+
+        <h3 className="mt-6 font-semibold">Not-a-vote phrases</h3>
+        <p className="text-muted-foreground mb-3 text-xs">
+          Phrases you marked “Not a vote” are dropped from every poll. Restore one to count it again.
+        </p>
+        <ul className="space-y-1">
+          {dismissed.map((d) => (
+            <li key={d.phrase} className="hover:bg-accent/50 flex items-center gap-2 rounded-md px-2 py-1 text-sm">
+              <Ban className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+              <code className="bg-muted min-w-0 truncate rounded px-1 text-xs">{d.phrase}</code>
+              <span className="grow" />
+              <span className="text-muted-foreground text-[10px]">{relativeTime(d.createdAt)}</span>
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => restore(d.phrase)}>
+                <RotateCcw className="h-3 w-3" /> Restore
+              </Button>
+            </li>
+          ))}
+          {dismissed.length === 0 && <li className="text-muted-foreground py-6 text-center text-xs">None</li>}
         </ul>
       </section>
     </div>

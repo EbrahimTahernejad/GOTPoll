@@ -295,6 +295,16 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
   }
 
   /** Streamer says: this phrase is not a vote. */
+  /**
+   * Undo "Not a vote". Takes effect immediately; viewers who typed it
+   * earlier in this poll were dropped, so they count from their next message.
+   */
+  undismiss(phrase: string) {
+    this.user.undismiss(phrase);
+    this.dismissed.delete(phrase);
+    this.schedule(true);
+  }
+
   dismiss(phrase: string) {
     this.user.dismiss(phrase);
     this.dismissed.add(phrase);

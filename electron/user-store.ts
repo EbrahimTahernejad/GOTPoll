@@ -133,6 +133,20 @@ export class UserStore {
     return new Set(rows.map((r) => r.phrase));
   }
 
+  /** Phrases marked "Not a vote", newest first. */
+  dismissedList(): { phrase: string; createdAt: number }[] {
+    return (
+      this.db.prepare('SELECT phrase, created_at FROM dismissed ORDER BY created_at DESC').all() as {
+        phrase: string;
+        created_at: number;
+      }[]
+    ).map((r) => ({ phrase: r.phrase, createdAt: r.created_at }));
+  }
+
+  undismiss(phrase: string) {
+    this.db.prepare('DELETE FROM dismissed WHERE phrase = ?').run(phrase);
+  }
+
   dismiss(phrase: string) {
     this.db.prepare('INSERT OR IGNORE INTO dismissed (phrase, created_at) VALUES (?, ?)').run(phrase, Date.now());
     this.forget(phrase);

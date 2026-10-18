@@ -200,6 +200,10 @@ declare global {
   type MatchProbe = {
     strategy: MatcherStrategy;
     cleaned: string | null;
+    /** the phrase was marked "Not a vote" – chat typing it is dropped */
+    dismissed: boolean;
+    /** the phrase was taught to a show ("Count as…") */
+    taughtTo: number | null;
     result: { showId: number; score: number; stage: MatchStage; alias: string } | null;
     /** what the selected AI strategy says (when it isn't classic and is ready) */
     aiResult?: { showId: number; score: number; stage: MatchStage; alias: string } | null;
@@ -248,6 +252,9 @@ declare global {
       aliases: {
         list: () => Promise<LearnedAlias[]>;
         remove: (phrase: string) => Promise<void>;
+        /** phrases marked "Not a vote" */
+        dismissed: () => Promise<{ phrase: string; createdAt: number }[]>;
+        restore: (phrase: string) => Promise<void>;
       };
       settings: {
         get: () => Promise<Settings>;

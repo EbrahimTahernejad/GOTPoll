@@ -44,6 +44,8 @@ const api: Window['GOTPoll'] = {
   aliases: {
     list: () => invoke('aliases:list'),
     remove: (phrase) => invoke('aliases:remove', phrase),
+    dismissed: () => invoke('aliases:dismissed'),
+    restore: (phrase) => invoke('aliases:restore', phrase),
   },
   settings: {
     get: () => invoke('settings:get'),

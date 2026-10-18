@@ -142,7 +142,12 @@ export async function probe(message: string): Promise<MatchProbe> {
     aiMs = performance.now() - t;
     aiResult = hit && { showId: hit.showId, score: hit.score, stage: hit.stage, alias: hit.alias };
   }
+  // exactly how the poll keys phrases: cleaned message
+  const dismissed = cleaned ? user.dismissed().has(cleaned) : false;
+  const taught = cleaned ? (user.aliases().find((a) => a.phrase === cleaned)?.showId ?? null) : null;
   return {
+    dismissed,
+    taughtTo: taught,
     strategy: user.settings().matcherStrategy,
     aiResult,
     aiMs,
