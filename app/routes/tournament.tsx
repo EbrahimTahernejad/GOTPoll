@@ -3,6 +3,10 @@ import {
   AlertTriangle,
   ArrowRight,
   Check,
+  Coins,
+  Dices,
+  Hand,
+  Scale,
   Crown,
   FastForward,
   History as HistoryIcon,
@@ -159,7 +163,7 @@ export default function TournamentPage() {
           {!snap ? null : !t ? (
             <Setup snap={snap} library={library} act={act} pending={pending} pollBusy={poll.state === 'running'} />
           ) : t.phase === 'open' || t.phase === 'open-results' ? (
-            <OpenRound t={t} poll={poll} library={library} act={act} pending={pending} />
+            <OpenRound snap={snap} t={t} poll={poll} library={library} act={act} pending={pending} />
           ) : (
             <>
               <LiveMatch snap={snap} poll={poll} library={library} channels={channels} act={act} pending={pending} />
@@ -415,12 +419,14 @@ function History({
 // ------------------------------------------------------------ open round
 
 function OpenRound({
+  snap,
   t,
   poll,
   library,
   act,
   pending,
 }: {
+  snap: TournamentSnapshot;
   t: Tournament;
   poll: PollSnapshot;
   library: Map<number, Show>;
@@ -428,6 +434,13 @@ function OpenRound({
   pending: string | null;
 }) {
   const live = t.phase === 'open';
+  const cut = live ? null : t.cut;
+  const unsettled = !!cut && !cut.picked;
+  // picking the tied places by hand
+  const [picking, setPicking] = useState<number[] | null>(null);
+  useEffect(() => {
+    if (!unsettled) setPicking(null);
+  }, [unsettled]);
   const time = useLiveTime(t.open.startedAt, t.open.endedAt);
   const spots = t.config.size - t.config.carried.length;
   const ranking = live ? poll.ranking.map((r) => ({ id: r.id, count: r.count })) : t.open.ranking;
@@ -461,13 +474,78 @@ function OpenRound({
             <Button variant="outline" disabled={pending !== null} onClick={() => act({ type: 'retry-open' })}>
               <RotateCcw className="h-3.5 w-3.5" /> Run it again
             </Button>
-            <Button disabled={pending !== null || voted.length + t.config.carried.length < 2} onClick={() => act({ type: 'build-bracket' })}>
+            <Button
+              disabled={pending !== null || unsettled || voted.length + t.config.carried.length < 2}
+              title={unsettled ? 'Settle the tie on the qualifying line first' : undefined}
+              onClick={() => act({ type: 'build-bracket' })}
+            >
               {pending === 'build-bracket' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
               Build the bracket
             </Button>
           </>
         )}
       </div>
+
+      {cut && (
+        <div
+          className={cn(
+            'flex items-center gap-3 border-b px-4 py-2.5 text-sm',
+            unsettled ? 'bg-amber-500/10 text-amber-800 dark:text-amber-300' : 'text-muted-foreground'
+          )}
+        >
+          <Scale className="h-4 w-4 shrink-0" />
+          {unsettled ? (
+            picking ? (
+              <span className="min-w-0 flex-1">
+                Tick <b>{cut.slots}</b> of the tied shows below · {picking.length}/{cut.slots}
+              </span>
+            ) : (
+              <span className="min-w-0 flex-1">
+                <b>{cut.candidates.length}</b> shows are level on <b>{cut.votes}</b> votes for the last{' '}
+                {cut.slots === 1 ? 'spot' : <b>{cut.slots} spots</b>}.
+              </span>
+            )
+          ) : (
+            <span className="min-w-0 flex-1">
+              The tie on {cut.votes} votes was settled {cut.method === 'draw' ? 'by a draw' : cut.method === 'coin' ? 'by a coin flip' : 'by hand'}.
+            </span>
+          )}
+          <div className="grow" />
+          {unsettled && !picking && (
+            <>
+              <Button size="sm" variant="outline" disabled={pending !== null} onClick={() => setPicking([])}>
+                <Hand className="h-3.5 w-3.5" /> Pick them myself
+              </Button>
+              <Button size="sm" disabled={pending !== null} onClick={() => act({ type: 'cut-draw' })}>
+                {cut.candidates.length === 2 ? (
+                  <>
+                    <Coins className="h-3.5 w-3.5" /> Flip a coin
+                  </>
+                ) : (
+                  <>
+                    <Dices className="h-3.5 w-3.5" /> Draw at random
+                  </>
+                )}
+              </Button>
+            </>
+          )}
+          {unsettled && picking && (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => setPicking(null)}>
+                Cancel
+              </Button>
+              <Button size="sm" disabled={picking.length !== cut.slots || pending !== null} onClick={() => act({ type: 'cut-pick', ids: picking })}>
+                <Check className="h-3.5 w-3.5" /> Confirm
+              </Button>
+            </>
+          )}
+          {!unsettled && (t.screen === 'draw' || t.screen === 'coin') && (
+            <Button size="sm" variant="outline" onClick={() => act({ type: 'continue' })}>
+              <ArrowRight className="h-3.5 w-3.5" /> Back to the qualifiers
+            </Button>
+          )}
+        </div>
+      )}
 
       {t.config.carried.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
@@ -494,7 +572,9 @@ function OpenRound({
               <AnimatePresence initial={false}>
                 {voted.slice(0, 60).map((r, i) => {
                   const s = library.get(r.id);
-                  const inside = i < spots;
+                  const tied = !live && snap.tied.includes(r.id);
+                  const inside = live ? i < spots : snap.qualified.includes(r.id);
+                  const ticked = !!picking?.includes(r.id);
                   return (
                     <motion.li
                       key={r.id}
@@ -510,7 +590,27 @@ function OpenRound({
                           CUT-OFF
                         </span>
                       )}
-                      <div className={cn('relative flex items-center gap-3 overflow-hidden rounded-md px-2 py-1.5', !inside && 'opacity-55')}>
+                      <div
+                        className={cn(
+                          'relative flex items-center gap-3 overflow-hidden rounded-md px-2 py-1.5',
+                          !inside && !tied && 'opacity-55',
+                          picking && tied && 'hover:bg-accent cursor-pointer'
+                        )}
+                        onClick={() => {
+                          if (!picking || !tied) return;
+                          setPicking(ticked ? picking.filter((x) => x !== r.id) : picking.length < (cut?.slots ?? 0) ? [...picking, r.id] : picking);
+                        }}
+                      >
+                        {picking && tied && (
+                          <span
+                            className={cn(
+                              'relative grid h-4 w-4 shrink-0 place-items-center rounded border',
+                              ticked ? 'bg-foreground text-background border-foreground' : 'border-foreground/30'
+                            )}
+                          >
+                            {ticked && <Check className="h-3 w-3" />}
+                          </span>
+                        )}
                         <motion.div
                           className={cn('absolute inset-y-0 left-0', inside ? 'bg-emerald-500/[0.08]' : 'bg-primary/[0.05]')}
                           animate={{ width: `${leader ? (r.count / leader) * 100 : 0}%` }}
@@ -521,6 +621,11 @@ function OpenRound({
                           <div className="truncate text-sm font-medium">{s?.titleRomaji ?? `#${r.id}`}</div>
                           <div className="text-muted-foreground truncate text-xs">{[s?.titleEnglish, s?.startYear].filter(Boolean).join(' · ')}</div>
                         </div>
+                        {tied && (
+                          <span className="relative rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                            TIE
+                          </span>
+                        )}
                         {inside && (
                           <span className="relative rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
                             {live ? 'IN' : 'QUALIFIED'}
@@ -587,10 +692,15 @@ function LiveMatch({
     const pendingTies = all.filter((x) => x.status === 'tie');
     return (
       <section className="bg-card/60 flex items-center gap-3 rounded-xl border p-3">
+        {t.screen === 'coin' && (
+          <Button size="sm" variant="outline" onClick={() => act({ type: 'continue' })}>
+            <ArrowRight className="h-3.5 w-3.5" /> Back to the bracket
+          </Button>
+        )}
         {pendingTies.length > 0 ? (
           <span className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="h-4 w-4" /> {matchLabel(pendingTies[0].key, snap.rounds.length)} ended in a tie – pick a winner or
-            rematch it from its menu.
+            <AlertTriangle className="h-4 w-4" /> {matchLabel(pendingTies[0].key, snap.rounds.length)} ended in a tie – flip a coin, pick a
+            winner or rematch it from its menu.
           </span>
         ) : next ? (
           <>
@@ -657,6 +767,12 @@ function LiveMatch({
         )}
         {live.stage === 'result' && (
           <>
+            {m.status === 'tie' && (
+              <Button size="sm" disabled={pending !== null} onClick={() => act({ type: 'coin-flip', key: m.key })}>
+                <Coins className="h-3.5 w-3.5" /> Flip a coin
+              </Button>
+            )}
+            {t.screen === 'coin' && <span className="text-muted-foreground text-xs">Coin flip on screen</span>}
             <Button size="sm" variant="outline" disabled={pending !== null} onClick={() => act({ type: 'retry-match', key: m.key })}>
               <RotateCcw className="h-3.5 w-3.5" /> Rematch
             </Button>
@@ -723,9 +839,11 @@ function ScreenPicker({ snap, act }: { snap: TournamentSnapshot; act: (a: Tourna
   const options: { screen: TournamentScreen; label: string; ok: boolean }[] = [
     { screen: 'open', label: 'Open round', ok: t.phase === 'open' },
     { screen: 'open-results', label: 'Qualifiers', ok: t.phase !== 'open' },
+    { screen: 'draw', label: 'Draw', ok: t.cut?.method === 'draw' },
     { screen: 'bracket', label: 'Bracket', ok: bracket },
     { screen: 'intro', label: 'VS', ok: bracket && !!pair },
     { screen: 'match', label: 'Match', ok: bracket && !!focus && (t.live?.key === focus.key || !!focus.result) },
+    { screen: 'coin', label: 'Coin flip', ok: !!t.coin && (t.coin.key !== 'cut' || t.cut?.method === 'coin') },
     { screen: 'champion', label: 'Champion', ok: t.phase === 'done' },
   ];
   return (

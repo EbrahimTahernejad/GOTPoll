@@ -87,7 +87,8 @@ test('full run: open round, qualifiers, 1v1s with one vote each, champion record
   // open round: viewers may back several shows; the returning show doesn't count here
   say(engine, 'a', 'sousou no frieren'); say(engine, 'a', 'jujutsu kaisen'); say(engine, 'b', 'sousou no frieren');
   say(engine, 'c', 'chainsaw man'); say(engine, 'd', 'one piece'); say(engine, 'd', 'dandadan');
-  assert.deepEqual(engine.snapshot().ranking.map((r) => [r.id, r.count]), [[1, 2], [2, 1], [3, 1], [4, 1]]);
+  say(engine, 'e', 'jujutsu kaisen'); say(engine, 'e', 'chainsaw man'); // a clean cut: no tie on the line
+  assert.deepEqual(engine.snapshot().ranking.map((r) => [r.id, r.count]), [[1, 2], [2, 2], [3, 2], [4, 1]]);
   await t.act({ type: 'stop-open' });
   await t.act({ type: 'build-bracket' });
   let snap = t.snapshot();
@@ -228,4 +229,83 @@ test('third place: semi-final losers, playable before the final, recorded with t
   assert.equal([...history.values()][0].third, undefined);
   await t.act({ type: 'undo' });
   assert.equal(t.snapshot().third.winner, s2.a);
+});
+
+test('cut tie: level shows across the line hold the bracket until drawn or picked', async () => {
+  const { engine, t } = setup();
+  // 3 spots: Frieren clear, then JJK / Chainsaw Man / One Piece level for 2
+  await t.act({ type: 'draft', patch: { size: 3, carried: [], thirdPlace: false } });
+  await t.act({ type: 'start-open' });
+  say(engine, 'a', 'sousou no frieren'); say(engine, 'b', 'sousou no frieren');
+  say(engine, 'c', 'jujutsu kaisen'); say(engine, 'd', 'chainsaw man'); say(engine, 'e', 'one piece');
+  await t.act({ type: 'stop-open' });
+  let snap = t.snapshot();
+  assert.deepEqual(snap.tournament.cut.candidates.sort(), [2, 3, 4]);
+  assert.equal(snap.tournament.cut.slots, 2);
+  assert.deepEqual(snap.qualified, [1]);
+  assert.deepEqual(snap.tied.sort(), [2, 3, 4]);
+  await assert.rejects(t.act({ type: 'build-bracket' }), /Settle the tie/);
+  await assert.rejects(t.act({ type: 'cut-pick', ids: [2] }), /exactly 2/);
+
+  await t.act({ type: 'cut-draw' });
+  snap = t.snapshot();
+  assert.equal(snap.tournament.screen, 'draw');
+  assert.equal(snap.tournament.cut.picked.length, 2);
+  assert.deepEqual(snap.tied, []);
+  assert.equal(snap.qualified.length, 3);
+  await t.act({ type: 'continue' });
+  assert.equal(t.snapshot().tournament.screen, 'open-results');
+
+  // undo the draw, pick by hand instead
+  await t.act({ type: 'undo' });
+  await t.act({ type: 'cut-pick', ids: [4, 2] });
+  await t.act({ type: 'build-bracket' });
+  assert.deepEqual(t.snapshot().tournament.slots.filter((x) => x !== null).sort(), [1, 2, 4]);
+});
+
+test('coin flip settles a tied 1v1, and can be undone back to the tie', async () => {
+  const { engine, t } = setup();
+  await t.act({ type: 'draft', patch: { size: 2, carried: [] } });
+  await t.act({ type: 'start-open' });
+  say(engine, 'a', 'sousou no frieren'); say(engine, 'a', 'jujutsu kaisen');
+  await t.act({ type: 'stop-open' });
+  await t.act({ type: 'build-bracket' });
+  await assert.rejects(t.act({ type: 'coin-flip', key: '0-0' }), /tied match/);
+  await t.act({ type: 'start-match', key: '0-0' });
+  await t.act({ type: 'begin-voting' });
+  say(engine, 'x', '1'); say(engine, 'y', '2');
+  await t.act({ type: 'stop-match' });
+  await t.act({ type: 'coin-flip', key: '0-0' });
+  const s = t.snapshot();
+  assert.equal(s.tournament.screen, 'coin');
+  assert.equal(s.tournament.phase, 'done');
+  const pub = t.publicView();
+  assert.equal(pub.coin.key, '0-0');
+  assert.ok([1, 2].includes(pub.coin.winner));
+  assert.equal(pub.rounds[0][0].coin, true);
+  await t.act({ type: 'continue' });
+  assert.equal(t.snapshot().tournament.screen, 'champion');
+  await t.act({ type: 'undo' });
+  assert.equal(t.snapshot().rounds[0][0].status, 'tie');
+});
+
+test('two level for one spot: the random option is a coin flip, not a draw', async () => {
+  const { engine, t } = setup();
+  await t.act({ type: 'draft', patch: { size: 2, carried: [] } });
+  await t.act({ type: 'start-open' });
+  say(engine, 'a', 'sousou no frieren'); say(engine, 'b', 'sousou no frieren');
+  say(engine, 'c', 'jujutsu kaisen'); say(engine, 'd', 'chainsaw man');
+  await t.act({ type: 'stop-open' });
+  assert.equal(t.snapshot().tournament.cut.candidates.length, 2);
+  await t.act({ type: 'cut-draw' });
+  const s = t.snapshot().tournament;
+  assert.equal(s.cut.method, 'coin');
+  assert.equal(s.screen, 'coin');
+  const pub = t.publicView();
+  assert.equal(pub.coin.key, 'cut');
+  assert.equal(pub.coin.winner, s.cut.picked[0]);
+  await t.act({ type: 'continue' });
+  assert.equal(t.snapshot().tournament.screen, 'open-results');
+  await t.act({ type: 'build-bracket' });
+  assert.deepEqual(t.snapshot().tournament.slots.sort(), [1, s.cut.picked[0]].sort());
 });

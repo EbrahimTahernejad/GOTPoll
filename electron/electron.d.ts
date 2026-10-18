@@ -151,7 +151,7 @@ declare global {
 
   type TournamentPhase = 'open' | 'open-results' | 'bracket' | 'done';
   /** what the viewer page shows */
-  type TournamentScreen = 'open' | 'open-results' | 'bracket' | 'intro' | 'match' | 'champion';
+  type TournamentScreen = 'open' | 'open-results' | 'draw' | 'bracket' | 'intro' | 'match' | 'coin' | 'champion';
   type BoutStage = 'intro' | 'voting' | 'result';
 
   type MatchResult = {
@@ -163,7 +163,23 @@ declare global {
     breakdown: [Record<string, number>, Record<string, number>];
     /** winner picked by hand */
     manual?: boolean;
+    /** a tie settled by a coin flip */
+    coin?: boolean;
     endedAt: number;
+  };
+
+  /**
+   * Shows tied on votes across the qualifying line: more of them than spots
+   * left. Settled by a random draw or by the streamer's pick.
+   */
+  type CutTie = {
+    candidates: number[];
+    votes: number;
+    slots: number;
+    picked: number[] | null;
+    /** draw = lottery (3+ level) · coin = two level for one spot */
+    method: 'draw' | 'coin' | 'manual' | null;
+    at: number | null;
   };
 
   type Tournament = {
@@ -180,6 +196,10 @@ declare global {
     live: { key: string; stage: BoutStage; run: number; at: number } | null;
     /** the match the bracket screen points at */
     focus: string | null;
+    /** a tie at the qualifying line (from the open round) */
+    cut?: CutTie | null;
+    /** the last coin flip, for the viewer page's coin screen ("cut" = the qualifying line) */
+    coin?: { key: string; at: number } | null;
   };
 
   type BracketStatus = 'waiting' | 'ready' | 'live' | 'done' | 'tie' | 'bye' | 'empty';
@@ -212,6 +232,9 @@ declare global {
     rounds: BracketMatch[][];
     /** the third-place match (null when off, or before the semis exist) */
     third: BracketMatch | null;
+    /** open round: who's through, and who's tied on the line (unsettled) */
+    qualified: number[];
+    tied: number[];
     draft: TournamentConfig;
     history: TournamentRecord[];
     canUndo: boolean;
@@ -241,6 +264,9 @@ declare global {
     | { type: 'undo' }
     | { type: 'close' }
     | { type: 'third-place'; on: boolean }
+    | { type: 'cut-draw' }
+    | { type: 'cut-pick'; ids: number[] }
+    | { type: 'coin-flip'; key: string }
     | { type: 'forget-history'; id: string };
 
   type PublicMatch = {
@@ -253,6 +279,7 @@ declare global {
     winner: number | null;
     votes: [number, number] | null;
     breakdown: [Record<string, number>, Record<string, number>] | null;
+    coin: boolean;
   };
 
   type PublicTournament = {
@@ -266,6 +293,10 @@ declare global {
     carried: PublicEntry[];
     /** frozen open-round standings, top M (live ones come in `ranking`) */
     standings: PublicEntry[];
+    qualified: number[];
+    tied: number[];
+    cut: (Omit<CutTie, 'candidates'> & { candidates: PublicEntry[] }) | null;
+    coin: { key: string; at: number; winner: number } | null;
     rounds: PublicMatch[][];
     third: PublicMatch | null;
     live: { key: string; stage: BoutStage; at: number } | null;

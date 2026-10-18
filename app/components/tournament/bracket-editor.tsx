@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeftRight, Crown, Eraser, Medal, MoreHorizontal, Play, Replace, RotateCcw, Shuffle, Tv, UserX, Wand2 } from 'lucide-react';
+import { ArrowLeftRight, Coins, Crown, Eraser, Medal, MoreHorizontal, Play, Replace, RotateCcw, Shuffle, Tv, UserX, Wand2 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '~/components/ui/button';
 import {
@@ -176,7 +176,7 @@ function MatchCard({
     >
       <div className="flex items-center gap-1.5 px-2 pt-1.5 text-[10px]">
         <span className="text-muted-foreground font-medium">{matchLabel(m.key, roundsCount)}</span>
-        <StatusChip status={m.status} manual={m.result?.manual} />
+        <StatusChip status={m.status} manual={m.result?.manual} coin={m.result?.coin} />
         <div className="grow" />
         {pair && (
           <DropdownMenu>
@@ -189,6 +189,11 @@ function MatchCard({
               {playable && (
                 <DropdownMenuItem onClick={() => act({ type: 'start-match', key: m.key })}>
                   <Play className="h-3.5 w-3.5" /> Start this match
+                </DropdownMenuItem>
+              )}
+              {m.status === 'tie' && !isLive && (
+                <DropdownMenuItem onClick={() => act({ type: 'coin-flip', key: m.key })}>
+                  <Coins className="h-3.5 w-3.5" /> Flip a coin
                 </DropdownMenuItem>
               )}
               {replayable && (
@@ -346,12 +351,12 @@ function SideRow({
   );
 }
 
-function StatusChip({ status, manual }: { status: BracketStatus; manual?: boolean }) {
+function StatusChip({ status, manual, coin }: { status: BracketStatus; manual?: boolean; coin?: boolean }) {
   const map: Partial<Record<BracketStatus, { label: string; cls: string }>> = {
     live: { label: 'LIVE', cls: 'bg-rose-500/15 text-rose-600 dark:text-rose-400' },
     ready: { label: 'Ready', cls: 'bg-foreground/5 text-muted-foreground' },
     tie: { label: 'Tie – pick a winner', cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-400' },
-    done: { label: manual ? 'Picked' : 'Done', cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' },
+    done: { label: coin ? 'Coin flip' : manual ? 'Picked' : 'Done', cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' },
     bye: { label: 'Bye', cls: 'bg-foreground/5 text-muted-foreground' },
   };
   const s = map[status];

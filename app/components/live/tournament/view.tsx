@@ -7,6 +7,8 @@ import Leaderboard from '../leaderboard';
 import Versus from '../versus';
 import BracketScreen from './bracket';
 import ChampionScreen from './champion';
+import CoinScreen from './coin';
+import DrawScreen from './draw';
 import { T_COVER } from './ids';
 import IntroScreen from './intro';
 import QualifiersScreen from './qualifiers';
@@ -55,10 +57,19 @@ export default function TournamentView({
       ? `${matchLabel(focus.key, t.rounds.length)} · ${voting ? 'type 1 or 2 (or the title) – one vote each' : 'result'}`
       : '',
     champion: 'Champion',
+    draw: 'Tie on the qualifying line · settled by a draw',
+    coin: t.coin?.key === 'cut' ? 'Two level for the last spot · settled by a coin flip' : 'Tied 1v1 · settled by a coin flip',
   }[t.screen];
 
   // key per screen and, for match screens, per match: switching matches replays the entrance
-  const layer = t.screen === 'intro' || t.screen === 'match' ? `${t.screen}-${t.focus}` : t.screen;
+  const layer =
+    t.screen === 'intro' || t.screen === 'match'
+      ? `${t.screen}-${t.focus}`
+      : t.screen === 'coin'
+        ? `coin-${t.coin?.at}`
+        : t.screen === 'draw'
+          ? `draw-${t.cut?.at}`
+          : t.screen;
   const morph = t.screen === 'bracket' || t.screen === 'intro' || t.screen === 'match';
 
   return (
@@ -121,6 +132,8 @@ export default function TournamentView({
             {t.screen === 'intro' && focus && <IntroScreen t={t} m={focus} />}
             {t.screen === 'match' && focus && <MatchScreen snap={snap} t={t} m={focus} />}
             {t.screen === 'champion' && <ChampionScreen t={t} />}
+            {t.screen === 'draw' && t.cut?.picked && <DrawScreen t={t} />}
+            {t.screen === 'coin' && t.coin && <CoinScreen t={t} />}
           </motion.main>
         </AnimatePresence>
       </LayoutGroup>

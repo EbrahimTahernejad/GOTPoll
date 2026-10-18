@@ -51,6 +51,24 @@ export function qualify(ranking: { id: number; count: number }[], carried: numbe
   return out;
 }
 
+/**
+ * Shows level on votes across the qualifying line, when there are more of
+ * them than spots left. Null when the line is clean.
+ */
+export function cutTie(
+  ranking: { id: number; count: number }[],
+  carried: number[],
+  size: number
+): { candidates: number[]; votes: number; slots: number } | null {
+  const spots = size - new Set(carried).size;
+  const list = ranking.filter((r) => r.count > 0 && !carried.includes(r.id));
+  if (spots <= 0 || list.length <= spots) return null;
+  const votes = list[spots - 1].count;
+  if (list[spots].count !== votes) return null;
+  const above = list.filter((r) => r.count > votes).length;
+  return { candidates: list.filter((r) => r.count === votes).map((r) => r.id), votes, slots: spots - above };
+}
+
 /** Every match, round by round, with who's in it and how it stands. */
 export function deriveRounds(
   slots: (number | null)[],

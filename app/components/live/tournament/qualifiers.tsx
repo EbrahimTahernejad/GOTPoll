@@ -26,6 +26,11 @@ export default function QualifiersScreen({ t }: { t: PublicTournament }) {
         <span className="live-shine text-[3vw] leading-none font-black tracking-tight">The qualifiers</span>
         <span className="text-[1.1vw] text-white/50">
           top {t.qualifySpots} of the open round{t.carried.length ? ` + ${t.carried.length} returning` : ''} · {t.size} in the bracket
+          {t.tied.length > 0 && t.cut && (
+            <span className="ml-[0.8vw] rounded-full bg-amber-300/15 px-[0.7vw] py-[0.1vw] font-bold text-amber-200">
+              {t.tied.length} level on {t.cut.votes} for the last {t.cut.slots}
+            </span>
+          )}
         </span>
       </motion.div>
 
@@ -52,7 +57,8 @@ export default function QualifiersScreen({ t }: { t: PublicTournament }) {
 
         <div className="grid min-h-0 flex-1 content-center gap-x-[1.2vw] gap-y-[1.4vw]" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
           {list.map((e, i) => {
-            const inside = i < t.qualifySpots;
+            const inside = t.qualified.includes(e.id);
+            const tied = t.tied.includes(e.id);
             const delay = 0.5 + (n - 1 - i) * step; // last place first, the winner last
             return (
               <motion.div
@@ -67,7 +73,7 @@ export default function QualifiersScreen({ t }: { t: PublicTournament }) {
                     entry={e}
                     className={cn(
                       'h-full w-full rounded-[0.9vw] shadow-2xl shadow-black/60',
-                      inside ? 'ring-[0.2vw] ring-emerald-400/80' : 'opacity-55 grayscale'
+                      inside ? 'ring-[0.2vw] ring-emerald-400/80' : tied ? 'ring-[0.2vw] ring-amber-300/80' : 'opacity-55 grayscale'
                     )}
                   />
                   <span
@@ -78,13 +84,17 @@ export default function QualifiersScreen({ t }: { t: PublicTournament }) {
                   <motion.span
                     className={cn(
                       'absolute right-[-0.6vw] bottom-[0.8vw] rotate-[-8deg] rounded-[0.3vw] px-[0.6vw] py-[0.1vw] text-[1vw] font-black tracking-widest shadow-xl',
-                      inside ? 'bg-emerald-400 text-emerald-950' : 'bg-black/70 text-white/50'
+                      inside ? 'bg-emerald-400 text-emerald-950' : tied ? 'bg-amber-300 text-amber-950' : 'bg-black/70 text-white/50'
                     )}
                     initial={{ scale: 2.6, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: delay + 0.35, type: 'spring', stiffness: 500, damping: 16 }}
+                    animate={tied ? { scale: [1, 1.12, 1], opacity: 1 } : { scale: 1, opacity: 1 }}
+                    transition={
+                      tied
+                        ? { delay: delay + 0.35, scale: { repeat: Infinity, duration: 1.1, delay: delay + 0.6 } }
+                        : { delay: delay + 0.35, type: 'spring', stiffness: 500, damping: 16 }
+                    }
                   >
-                    {inside ? 'IN' : 'OUT'}
+                    {inside ? 'IN' : tied ? 'TIE' : 'OUT'}
                   </motion.span>
                 </div>
                 <div className="w-full text-center">

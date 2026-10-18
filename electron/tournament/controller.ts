@@ -7,6 +7,7 @@ import {
   MIN_ENTRIES,
   THIRD,
   championOf,
+  cutTie,
   deriveRounds,
   deriveThird,
   nextReady,
@@ -75,6 +76,7 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
       tournament: t,
       rounds,
       third: this.third(rounds),
+      ...this.standing(),
       draft: this.draft,
       history: this.user.tournaments(),
       canUndo: this.undoStack.length > 0,
@@ -103,7 +105,9 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
       winner: m.winner ?? null,
       votes: m.result?.votes ?? null,
       breakdown: m.result?.breakdown ?? null,
+      coin: !!m.result?.coin,
     });
+    const coinMatch = t.coin && t.coin.key !== 'cut' ? [...rounds.flat(), third].find((m) => m?.key === t.coin!.key) : null;
     return {
       id: t.id,
       title: t.config.title,
@@ -113,6 +117,9 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
       qualifySpots: Math.max(0, t.config.size - t.config.carried.length),
       carried: t.config.carried.flatMap((id) => entry(id) ?? []),
       standings: t.open.ranking.slice(0, t.config.showTop).flatMap((r) => entry(r.id, r.count) ?? []),
+      ...this.standing(),
+      cut: t.cut ? { ...t.cut, candidates: t.cut.candidates.flatMap((id) => entry(id, t.cut!.votes) ?? []) } : null,
+      coin: this.coinInfo(t, coinMatch),
       rounds: rounds.map((row) => row.map(pub)),
       third: third && pub(third),
       live: t.live && { key: t.live.key, stage: t.live.stage, at: t.live.at },
@@ -200,6 +207,7 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
         this.poll.stop({ keepSources: true });
         t.open.ranking = this.openRanking();
         t.open.endedAt = Date.now();
+        t.cut = this.findCut(t);
         t.phase = 'open-results';
         t.screen = 'open-results';
         return;
@@ -211,12 +219,41 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
         t.screen = 'open';
         t.slots = [];
         t.results = {};
+        t.cut = null;
         await this.startOpenRun();
+        return;
+      }
+      case 'cut-draw':
+      case 'cut-pick': {
+        const t = this.need('open-results');
+        const cut = t.cut;
+        if (!cut) throw new Error('Nobody is tied on the qualifying line');
+        let picked: number[];
+        if (a.type === 'cut-draw') {
+          // a fair shuffle; the viewer page plays it out as a ball draw
+          const pool = [...cut.candidates];
+          for (let i = pool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+          }
+          picked = pool.slice(0, cut.slots);
+        } else {
+          picked = [...new Set(a.ids)].filter((id) => cut.candidates.includes(id));
+          if (picked.length !== cut.slots) throw new Error(`Pick exactly ${cut.slots} of the tied shows`);
+        }
+        // two level for one spot is a coin toss; the ball draw is for three or more
+        const method = a.type === 'cut-pick' ? 'manual' : cut.candidates.length === 2 ? 'coin' : 'draw';
+        this.push(method === 'manual' ? 'Pick the tied places' : method === 'coin' ? 'Flip for the last place' : 'Draw the tied places');
+        const at = Date.now();
+        t.cut = { ...cut, picked, method, at };
+        if (method === 'coin') t.coin = { key: 'cut', at };
+        t.screen = method === 'manual' ? 'open-results' : method;
         return;
       }
       case 'build-bracket': {
         const t = this.need('open-results');
-        const ids = qualify(t.open.ranking, t.config.carried, t.config.size);
+        if (t.cut && !t.cut.picked) throw new Error('Settle the tie on the qualifying line first');
+        const ids = qualify(this.effectiveRanking(t), t.config.carried, t.config.size);
         if (ids.length < MIN_ENTRIES) throw new Error('Not enough shows got votes to make a bracket');
         this.push('Build the bracket');
         t.slots = seedSlots(ids);
@@ -238,7 +275,7 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
             [ids[i], ids[j]] = [ids[j], ids[i]];
           }
         } else {
-          const order = qualify(t.open.ranking, t.config.carried, MAX_ENTRIES);
+          const order = qualify(this.effectiveRanking(t), t.config.carried, MAX_ENTRIES);
           const rank = (id: number) => (order.includes(id) ? order.indexOf(id) : 999);
           ids.sort((x, y) => rank(x) - rank(y));
         }
@@ -350,6 +387,18 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
         t.results = pruneResults(t.slots, t.results);
         return;
       }
+      case 'coin-flip': {
+        const t = this.need('bracket', 'done');
+        const m = this.match(a.key);
+        if (m.status !== 'tie' || !m.result) throw new Error('Only a tied match goes to a coin flip');
+        this.push('Flip a coin');
+        const winner = Math.random() < 0.5 ? m.result.a : m.result.b;
+        t.results[a.key] = { ...m.result, winner, coin: true, manual: false };
+        t.coin = { key: a.key, at: Date.now() };
+        t.focus = a.key;
+        t.screen = 'coin';
+        return;
+      }
       case 'clear-result': {
         const t = this.need('bracket', 'done');
         if (!t.results[a.key]) return;
@@ -361,9 +410,13 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
         return;
       }
       case 'continue': {
-        const t = this.need('bracket', 'done');
-        if (t.live?.stage !== 'result') return;
-        t.live = null;
+        const t = this.need('open-results', 'bracket', 'done');
+        if (t.screen === 'draw' || (t.screen === 'coin' && t.phase === 'open-results')) {
+          t.screen = 'open-results';
+          return;
+        }
+        if (t.live?.stage === 'result') t.live = null;
+        else if (t.screen !== 'coin') return;
         t.screen = championOf(this.rounds()) !== null ? 'champion' : 'bracket';
         t.focus = nextReady(this.rounds())?.key ?? t.focus;
         return;
@@ -382,10 +435,12 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
             !!focus &&
             (t.live?.key === focus || !!this.match(focus).result),
           champion: t.phase === 'done',
+          draw: t.cut?.method === 'draw',
+          coin: !!this.coinInfo(t),
         };
         if (!ok[a.screen]) throw new Error('Nothing to show there yet');
         t.screen = a.screen;
-        t.focus = focus;
+        t.focus = a.screen === 'coin' && t.coin!.key !== 'cut' ? t.coin!.key : focus;
         return;
       }
       case 'undo': {
@@ -449,6 +504,42 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
     const t = this.t!;
     t.results = pruneResults(t.slots, t.results);
     t.focus = nextReady(this.rounds())?.key ?? null;
+  }
+
+  /** The coin flip the coin screen can show: on the qualifying line, or a tied match. */
+  private coinInfo(t: Tournament, m?: BracketMatch | null): { key: string; at: number; winner: number } | null {
+    const coin = t.coin;
+    if (!coin) return null;
+    if (coin.key === 'cut') {
+      const won = t.cut?.method === 'coin' ? t.cut.picked?.[0] : undefined;
+      return won === undefined ? null : { key: 'cut', at: coin.at, winner: won };
+    }
+    if (t.phase !== 'bracket' && t.phase !== 'done') return null;
+    const match = m === undefined ? this.match(coin.key) : m;
+    return match?.result?.coin && typeof match.winner === 'number' ? { key: coin.key, at: coin.at, winner: match.winner } : null;
+  }
+
+  private findCut(t: Tournament): CutTie | null {
+    const tie = cutTie(t.open.ranking, t.config.carried, t.config.size);
+    return tie && { ...tie, picked: null, method: null, at: null };
+  }
+
+  /** The open round's standings with the tied shows that lost out removed. */
+  private effectiveRanking(t: Tournament) {
+    const cut = t.cut;
+    return t.open.ranking.filter((r) => !cut || !cut.candidates.includes(r.id) || cut.picked?.includes(r.id));
+  }
+
+  /** Who's through from the open round, and who's still level on the line. */
+  private standing(): { qualified: number[]; tied: number[] } {
+    const t = this.t;
+    if (!t) return { qualified: [], tied: [] };
+    const spots = Math.max(0, t.config.size - t.config.carried.length);
+    const list = t.open.ranking.filter((r) => r.count > 0 && !t.config.carried.includes(r.id));
+    const cut = t.phase === 'open' ? null : t.cut;
+    if (!cut) return { qualified: list.slice(0, spots).map((r) => r.id), tied: [] };
+    const above = list.filter((r) => r.count > cut.votes).map((r) => r.id);
+    return { qualified: [...above, ...(cut.picked ?? [])], tied: cut.picked ? [] : cut.candidates };
   }
 
   private openRanking() {
@@ -547,6 +638,7 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
       t.phase = 'open-results';
       t.screen = 'open-results';
       t.open.endedAt = Date.now();
+      t.cut = this.findCut(t);
     }
     if (t.live && t.live.stage !== 'result') {
       t.live = null;

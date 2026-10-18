@@ -101,10 +101,25 @@ if (isDev) {
     try {
       if (req.query.a) await tournament.act(JSON.parse(String(req.query.a)) as TournamentAction);
       const s = tournament.snapshot();
-      res.json({ phase: s.tournament?.phase ?? null, screen: s.tournament?.screen, live: s.tournament?.live, focus: s.tournament?.focus, undo: s.undoLabel });
+      res.json({ phase: s.tournament?.phase ?? null, screen: s.tournament?.screen, live: s.tournament?.live, focus: s.tournament?.focus, cut: s.tournament?.cut, undo: s.undoLabel });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
     }
+  });
+
+  // Dev only: play exact chat lines, spread over `over` ms (demos with set results).
+  //   POST /api/dev/say {"over": 20000, "m": [["twitch", "user1", "frieren"], …]}
+  app.post('/api/dev/say', express.json({ limit: '2mb' }), (req: Request, res: Response) => {
+    if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '')) {
+      res.status(403).end();
+      return;
+    }
+    const lines = (Array.isArray(req.body?.m) ? req.body.m : []) as [ChatPlatform, string, string][];
+    const over = Math.max(0, Number(req.body?.over) || 0);
+    lines.forEach(([platform, userId, text], i) => {
+      setTimeout(() => poll.ingest({ platform, userId, text }), lines.length > 1 ? (over * i) / (lines.length - 1) : 0);
+    });
+    res.json({ queued: lines.length });
   });
 
   let timer: NodeJS.Timeout | null = null;
