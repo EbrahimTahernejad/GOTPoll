@@ -6,6 +6,7 @@ import { CatalogStore } from './catalog/store.js';
 import { Matcher } from './matching/matcher.js';
 import { cleanMessage } from './matching/normalize.js';
 import { PollEngine } from './poll/engine.js';
+import { TournamentController } from './tournament/controller.js';
 import { findRumbleCandidates } from './poll/sources/rumble-browser.js';
 import { rumbleChannelPath } from './poll/sources/rumble.js';
 import { UserStore } from './user-store.js';
@@ -56,6 +57,13 @@ export const poll = new PollEngine(catalog, user, {
   rumbleCandidates: findRumbleCandidates,
   makeStrategy: currentStrategy,
 });
+
+export const tournament = new TournamentController(poll, user);
+
+/** What the viewer page gets: the poll, and the tournament when one is open. */
+export function publicFeed(s?: PollSnapshot): PublicSnapshot {
+  return { ...poll.publicSnapshot(s), tournament: tournament.publicView() };
+}
 
 /** Load (not download) whatever the selected strategy needs. */
 export async function resolvedLlm() {

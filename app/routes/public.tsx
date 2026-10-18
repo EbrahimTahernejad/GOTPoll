@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
-import AnimatedNumber from '~/components/live/animated-number';
+import { Backdrop, Stat, StatePill } from '~/components/live/chrome';
+import TournamentView from '~/components/live/tournament/view';
 import FinalReveal from '~/components/live/final-reveal';
 import Leaderboard from '~/components/live/leaderboard';
 import Versus from '~/components/live/versus';
@@ -36,6 +37,8 @@ export default function Public() {
     document.documentElement.classList.add('live-page');
     return () => document.documentElement.classList.remove('live-page');
   }, []);
+
+  if (snap?.tournament) return <TournamentView snap={snap} t={snap.tournament} connected={connected} transparent={transparent} />;
 
   const backdrop = versus ? null : view === 'final' ? winner : view === 'live' ? (snap?.ranking[0] ?? null) : null;
 
@@ -137,32 +140,6 @@ export default function Public() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <span className="flex items-baseline gap-[0.35vw]">
-      <AnimatedNumber value={value} className="text-[1.3vw] font-extrabold tabular-nums" />
-      <span className="text-white/45 uppercase">{label}</span>
-    </span>
-  );
-}
-
-function StatePill({ state }: { state: PollState }) {
-  if (state === 'running') {
-    return (
-      <span className="flex items-center gap-[0.5vw] rounded-full bg-rose-500/15 px-[0.9vw] py-[0.3vw] font-bold tracking-widest text-rose-300 ring-1 ring-rose-400/30">
-        <span className="relative flex h-[0.6vw] w-[0.6vw]">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
-          <span className="relative inline-flex h-full w-full rounded-full bg-rose-500" />
-        </span>
-        LIVE
-      </span>
-    );
-  }
-  return (
-    <span className="rounded-full bg-white/10 px-[0.9vw] py-[0.3vw] font-bold tracking-widest text-white/70">FINAL</span>
-  );
-}
-
 function Examples() {
   const [i, setI] = useState(0);
   useEffect(() => {
@@ -185,30 +162,6 @@ function Examples() {
           </motion.span>
         </AnimatePresence>
       </span>
-    </div>
-  );
-}
-
-/** Blurred cover of whoever leads, cross-fading as the lead changes. */
-function Backdrop({ entry }: { entry: PublicEntry | null }) {
-  return (
-    <div className="pointer-events-none fixed inset-0 -z-0 bg-[#07060d]">
-      <div className="live-aurora absolute inset-0" />
-      <AnimatePresence>
-        {entry?.cover && (
-          <motion.div
-            key={entry.id}
-            className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url('${entry.cover}')`, filter: 'blur(70px) saturate(1.5)' }}
-            initial={{ opacity: 0, scale: 1.4 }}
-            animate={{ opacity: 0.38, scale: 1.25 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 1.6, ease: 'easeOut' }}
-          />
-        )}
-      </AnimatePresence>
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,#07060dcc_85%)]" />
-      <div className="live-grain absolute inset-0 opacity-[0.07] mix-blend-overlay" />
     </div>
   );
 }

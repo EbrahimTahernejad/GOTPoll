@@ -1,29 +1,13 @@
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
-import {
-  ExternalLink,
-  Info,
-  Loader2,
-  MessageSquareText,
-  Play,
-  RotateCcw,
-  Radio,
-  Settings2,
-  Share2,
-  Trophy,
-  Check,
-  Square,
-  X,
-} from 'lucide-react';
+import { ExternalLink, Info, Loader2, MessageSquareText, Play, RotateCcw, Radio, Swords, Trophy, Square, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { CatalogPill } from '~/components/app/catalog-status';
-import { ShareLinks, useShare } from '~/components/share/share-panel';
-import { TitleBarContent } from '~/components/app/title-bar';
 import AssignDialog from '~/components/poll/assign-dialog';
 import PhrasesDialog from '~/components/poll/phrases-dialog';
 import UnmatchedPanel from '~/components/poll/unmatched-panel';
+import AppHeader from '~/components/app/app-header';
+import { EmptyState, FilterChip, FilterGroup, Source, StateBadge, Stat } from '~/components/poll/bits';
 import ShortlistEditor from '~/components/poll/shortlist-editor';
-import { PLATFORMS, PlatformIcon } from '~/components/channels/platforms';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import {
@@ -34,11 +18,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '~/components/ui/dialog';
-import { Label } from '~/components/ui/label';
-import { Switch } from '~/components/ui/switch';
 import useLiveTime from '~/hooks/useLiveTime';
 import usePoll from '~/hooks/usePoll';
-import useServerPort from '~/hooks/useServerPort';
 import { cn } from '~/lib/utils';
 
 const FORMATS: { id: ShowFormat; label: string }[] = [
@@ -55,12 +36,7 @@ const RELEASES: { id: ShowRelease; label: string; hint: string }[] = [
 
 export default function Home() {
   const snap = usePoll();
-  const [title, setTitle] = useState('Anime Poll');
-  useEffect(() => {
-    window.GOTPoll.settings.get().then((s) => setTitle(s.pollTitle));
-  }, []);
   const time = useLiveTime(snap.startedAt, snap.endedAt);
-  const port = useServerPort();
   const [filters, setFilters] = useState<PollFilters | null>(null);
   const [mode, setMode] = useState<PollMode>('open');
   const [shortlist, setShortlist] = useState<number[]>([]);
@@ -90,6 +66,11 @@ export default function Home() {
   const [preview, setPreview] = useState<RankedShow | null>(null);
 
   const running = snap.state === 'running';
+  const [tournamentOpen, setTournamentOpen] = useState(false);
+  useEffect(() => {
+    window.GOTPoll.tournament.snapshot().then((t) => setTournamentOpen(!!t.tournament));
+    return window.GOTPoll.tournament.onUpdate((t) => setTournamentOpen(!!t.tournament));
+  }, []);
   const leader = snap.ranking[0]?.count ?? 0;
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -111,25 +92,19 @@ export default function Home() {
 
   return (
     <>
-      <TitleBarContent>
-        <div className="flex items-center gap-2 select-none">
-          <div className="h-9 w-9 bg-[url(/icon.png)] bg-cover bg-center bg-no-repeat" />
-          <div className="text-xl font-semibold">{title}</div>
-        </div>
-        <div className="grow" />
-        <div className="mr-2 flex items-center gap-2">
-          <CatalogPill />
-          <ShareButton />
-          <Button variant="ghost" size="icon" asChild className="pointer-events-auto [app-region:no-drag]">
-            <Link to="/settings">
-              <Settings2 className="h-4 w-4" />
-            </Link>
-          </Button>
-        </div>
-      </TitleBarContent>
+      <AppHeader />
 
       <div className="flex h-[calc(100vh-56px)] min-h-0 gap-3 px-3 pb-3">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+          {tournamentOpen && (
+            <Link
+              to="/tournament"
+              className="flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-700 hover:bg-violet-500/15 dark:text-violet-300"
+            >
+              <Swords className="h-4 w-4" />
+              A tournament is open – chat is counted there. Close it to run a normal poll.
+            </Link>
+          )}
           {/* ---------------- poll card */}
           <section className="bg-card/60 rounded-xl border">
             <div className="flex items-center gap-4 p-4">
@@ -146,7 +121,7 @@ export default function Home() {
                 )}
               </div>
               <div className="grow" />
-              {running ? (
+              {tournamentOpen ? null : running ? (
                 <Button variant="destructive" disabled={busy} onClick={() => act(() => window.GOTPoll.poll.stop())}>
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-3.5 w-3.5 fill-current" />}
                   End poll
@@ -403,157 +378,3 @@ export default function Home() {
 }
 
 
-function Source({ channel }: { channel: ChannelState }) {
-  const { status } = channel;
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!status.retryAt) return;
-    const t = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(t);
-  }, [status.retryAt]);
-  const dot = {
-    off: 'bg-muted-foreground/40',
-    connecting: 'bg-amber-400 animate-pulse',
-    live: 'bg-emerald-500',
-    waiting: 'bg-sky-400 animate-pulse',
-    error: 'bg-rose-500',
-  }[status.state];
-  // live countdown instead of the frozen "retrying in 8s"
-  const detail =
-    status.retryAt && status.detail
-      ? status.detail.replace(/retrying in \d+s/, now >= status.retryAt ? 'retrying…' : `retrying in ${Math.ceil((status.retryAt - now) / 1000)}s`)
-      : status.detail;
-  const name =
-    channel.label ||
-    (channel.platform === 'twitch' ? channel.target : channel.target.replace(/^https?:\/\/(www\.)?(rumble\.com\/(c|user)\/)?/, ''));
-  return (
-    <span
-      className="bg-background/60 flex items-center gap-1.5 rounded-full border py-0.5 pr-2 pl-1 text-xs"
-      title={`${PLATFORMS[channel.platform].name} · ${channel.target}${detail ? `\n${detail}` : ''}`}
-    >
-      <span className="grid h-4 w-4 place-items-center rounded-full text-white" style={{ background: PLATFORMS[channel.platform].color }}>
-        <PlatformIcon platform={channel.platform} className="h-2.5 w-2.5" />
-      </span>
-      <span className="max-w-28 truncate">{name}</span>
-      <span className={cn('h-1.5 w-1.5 rounded-full', dot)} />
-      {status.state !== 'live' && detail && <span className="text-muted-foreground max-w-36 truncate">{detail}</span>}
-    </span>
-  );
-}
-
-/** Title-bar "Share" button: viewer page links + the public link toggle. */
-function ShareButton() {
-  const info = useShare();
-  const [open, setOpen] = useState(false);
-  const online = info?.tunnel.state === 'online';
-  return (
-    <>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="pointer-events-auto [app-region:no-drag]"
-        onClick={() => setOpen(true)}
-        title="Viewer page links"
-      >
-        <span className="relative">
-          <Share2 className="h-4 w-4" />
-          {online && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />}
-        </span>
-        Share
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Share the viewer page</DialogTitle>
-            <DialogDescription>The live ranking and final reveal – read-only, nothing else in the app.</DialogDescription>
-          </DialogHeader>
-          {info && <ShareLinks info={info} />}
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-
-function StateBadge({ state }: { state: PollState }) {
-  const map = {
-    idle: { label: 'Ready', dot: 'bg-muted-foreground/50', cls: 'text-muted-foreground' },
-    running: { label: 'Live', dot: 'bg-rose-500 animate-pulse', cls: 'text-rose-600 dark:text-rose-400' },
-    ended: { label: 'Ended', dot: 'bg-emerald-500', cls: 'text-emerald-600 dark:text-emerald-400' },
-  }[state];
-  return (
-    <span className={cn('bg-foreground/5 flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold', map.cls)}>
-      <span className={cn('h-2 w-2 rounded-full', map.dot)} />
-      {map.label}
-    </span>
-  );
-}
-
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <span className="tabular-nums">
-      <b className="text-foreground text-sm">{value.toLocaleString()}</b> {label}
-    </span>
-  );
-}
-
-function FilterGroup({ label, note, children }: { label: string; note?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="text-muted-foreground flex items-center gap-2 text-[11px] font-medium tracking-wide uppercase">
-        {label}
-        {note && <span className="text-[11px] font-normal tracking-normal normal-case">· {note}</span>}
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5">{children}</div>
-    </div>
-  );
-}
-
-/** Toggle chip: clearly filled when on, outlined when off. */
-function FilterChip({
-  on,
-  disabled,
-  onClick,
-  title,
-  children,
-}: {
-  on: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  title?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      aria-pressed={on}
-      className={cn(
-        'flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-all',
-        on
-          ? 'border-foreground bg-foreground text-background'
-          : 'border-foreground/15 text-muted-foreground hover:border-foreground/40 hover:text-foreground',
-        disabled && 'cursor-not-allowed opacity-50'
-      )}
-    >
-      {on && <Check className="h-3 w-3" />}
-      {children}
-    </button>
-  );
-}
-
-function EmptyState({ icon: Icon, title, text }: { icon: typeof Trophy; title: string; text: string }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-      <div className="bg-foreground/5 grid h-14 w-14 place-items-center rounded-2xl">
-        <Icon className="text-muted-foreground h-6 w-6" />
-      </div>
-      <div>
-        <div className="font-semibold">{title}</div>
-        <p className="text-muted-foreground mt-1 max-w-xs text-sm">{text}</p>
-      </div>
-    </div>
-  );
-}

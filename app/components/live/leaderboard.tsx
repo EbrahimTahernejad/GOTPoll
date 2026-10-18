@@ -126,16 +126,35 @@ function Move({ move }: { move?: { delta: number; at: number } }) {
   );
 }
 
+/** tournament open round: in = inside the qualifying places, out = below the cut */
+type Cut = 'in' | 'out' | undefined;
+
+function CutTag({ cut }: { cut: Cut }) {
+  if (!cut) return null;
+  return (
+    <span
+      className={cn(
+        'rounded-full px-[0.55em] py-[0.1em] text-[0.62em] font-black tracking-widest',
+        cut === 'in' ? 'bg-emerald-400 text-emerald-950' : 'bg-white/10 text-white/40'
+      )}
+    >
+      {cut === 'in' ? 'IN' : 'OUT'}
+    </span>
+  );
+}
+
 function HeroCard({
   entry,
   rank,
   total,
   move,
+  cut,
 }: {
   entry: PublicEntry;
   rank: number;
   total: number;
   move?: { delta: number; at: number };
+  cut?: Cut;
 }) {
   const medal = MEDAL[rank];
   const pct = total ? Math.round((entry.count / total) * 100) : 0;
@@ -190,6 +209,7 @@ function HeroCard({
             <Bump count={entry.count} />
           </div>
           <div className="flex flex-col items-end gap-[0.2vw]">
+            <CutTag cut={cut} />
             <Move move={move} />
             <span className="text-[1.1vw] font-semibold tabular-nums" style={{ color: medal }}>
               {pct}%
@@ -214,11 +234,13 @@ function Row({
   rank,
   leader,
   move,
+  cut,
 }: {
   entry: PublicEntry;
   rank: number;
   leader: number;
   move?: { delta: number; at: number };
+  cut?: Cut;
 }) {
   const width = leader ? (entry.count / leader) * 100 : 0;
   return (
@@ -228,7 +250,11 @@ function Row({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 30, transition: { duration: 0.25 } }}
       transition={SPRING}
-      className="relative flex items-center gap-[0.8vw] overflow-hidden rounded-[0.8vw] border border-white/[0.07] bg-white/[0.035] py-[0.45vw] pr-[1vw] pl-[0.6vw]"
+      className={cn(
+        'relative flex items-center gap-[0.8vw] overflow-hidden rounded-[0.8vw] border border-white/[0.07] bg-white/[0.035] py-[0.45vw] pr-[1vw] pl-[0.6vw] transition-opacity',
+        cut === 'in' && 'border-emerald-400/30',
+        cut === 'out' && 'opacity-60'
+      )}
     >
       <motion.div
         className="absolute inset-y-0 left-0 -z-0 bg-gradient-to-r from-violet-500/25 via-fuchsia-500/15 to-transparent"
@@ -247,9 +273,12 @@ function Row({
         {entry.subtitle && <div className="truncate text-[0.72vw] text-white/45">{entry.subtitle}</div>}
       </div>
       <Move move={move} />
+      <span className="relative text-[1vw]">
+        <CutTag cut={cut} />
+      </span>
       <span className="relative flex items-baseline gap-1">
         <AnimatedNumber value={entry.count} className="text-[1.35vw] font-extrabold text-white tabular-nums" />
-        <Bump count={entry.count} className="right-full top-[0.3vw] mr-[0.5vw]" />
+        <Bump count={entry.count} className="-top-[1.2vw] right-0" />
       </span>
     </motion.li>
   );
@@ -264,7 +293,15 @@ function OptionTag({ n }: { n: number }) {
   );
 }
 
-export default function Leaderboard({ snap }: { snap: PublicSnapshot }) {
+export default function Leaderboard({
+  snap,
+  qualify,
+}: {
+  snap: PublicSnapshot;
+  /** tournament open round: how many places go through */
+  qualify?: number;
+}) {
+  const cutOf = (rank: number): Cut => (qualify === undefined ? undefined : rank < qualify ? 'in' : 'out');
   const ranking = useCalmOrder(snap.ranking);
   const moves = useMovement(ranking);
   const top = ranking.slice(0, 3);
@@ -276,7 +313,7 @@ export default function Leaderboard({ snap }: { snap: PublicSnapshot }) {
       <div className="grid grid-cols-[1.25fr_1fr_1fr] gap-[1.4vw]">
         <AnimatePresence mode="popLayout">
           {top.map((e, i) => (
-            <HeroCard key={e.id} entry={e} rank={i} total={snap.totalVotes} move={moves.get(e.id)} />
+            <HeroCard key={e.id} entry={e} rank={i} total={snap.totalVotes} move={moves.get(e.id)} cut={cutOf(i)} />
           ))}
         </AnimatePresence>
       </div>
@@ -284,7 +321,7 @@ export default function Leaderboard({ snap }: { snap: PublicSnapshot }) {
         <ul className="mt-[1.4vw] grid grid-flow-col grid-cols-2 grid-rows-6 gap-x-[1.6vw] gap-y-[0.5vw]">
           <AnimatePresence mode="popLayout">
             {rest.map((e, i) => (
-              <Row key={e.id} entry={e} rank={i + 3} leader={leader} move={moves.get(e.id)} />
+              <Row key={e.id} entry={e} rank={i + 3} leader={leader} move={moves.get(e.id)} cut={cutOf(i + 3)} />
             ))}
           </AnimatePresence>
         </ul>

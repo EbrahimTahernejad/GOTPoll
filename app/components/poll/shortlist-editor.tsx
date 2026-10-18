@@ -15,11 +15,21 @@ export default function ShortlistEditor({
   shows,
   disabled,
   onChange,
+  hint,
+  max = MAX,
+  numbered = true,
+  placeholder,
 }: {
   ids: number[];
   shows: Map<number, Show>;
   disabled?: boolean;
   onChange: (ids: number[]) => void;
+  /** replaces the "chat votes with…" line; null hides it */
+  hint?: React.ReactNode;
+  max?: number;
+  /** show 1, 2, 3 badges (the numbers chat types) */
+  numbered?: boolean;
+  placeholder?: string;
 }) {
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -55,7 +65,7 @@ export default function ShortlistEditor({
   }, []);
 
   const add = (id: number) => {
-    if (ids.length >= MAX || ids.includes(id)) return;
+    if (ids.length >= max || ids.includes(id)) return;
     onChange([...ids, id]);
     setQuery('');
     setHits([]);
@@ -80,9 +90,11 @@ export default function ShortlistEditor({
                   !disabled && 'cursor-grab active:cursor-grabbing'
                 )}
               >
-                <span className="bg-foreground text-background grid h-6 w-6 shrink-0 place-items-center rounded-md text-xs font-bold tabular-nums">
-                  {i + 1}
-                </span>
+                {numbered && (
+                  <span className="bg-foreground text-background grid h-6 w-6 shrink-0 place-items-center rounded-md text-xs font-bold tabular-nums">
+                    {i + 1}
+                  </span>
+                )}
                 {s?.coverImage ? (
                   <img src={s.coverImage} alt="" draggable={false} className="h-9 w-7 shrink-0 rounded object-cover" />
                 ) : (
@@ -111,7 +123,7 @@ export default function ShortlistEditor({
         </AnimatePresence>
       </Reorder.Group>
 
-      {!disabled && ids.length < MAX && (
+      {!disabled && ids.length < max && (
         <div ref={box} className="relative w-72">
           <Plus className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
           <Input
@@ -127,7 +139,7 @@ export default function ShortlistEditor({
               if (e.key === 'Enter' && hits[active]) add(hits[active].show.id);
               if (e.key === 'Escape') setOpen(false);
             }}
-            placeholder={ids.length ? 'Add another option…' : 'Add the first option…'}
+            placeholder={placeholder ?? (ids.length ? 'Add another option…' : 'Add the first option…')}
             className="h-8 pl-8 text-xs"
           />
           <AnimatePresence>
@@ -168,7 +180,9 @@ export default function ShortlistEditor({
           )}
         </div>
       )}
-      {ids.length > 0 && (
+      {hint !== undefined ? (
+        hint && <p className="text-muted-foreground text-[11px]">{hint}</p>
+      ) : ids.length > 0 && (
         <p className="text-muted-foreground text-[11px]">
           Chat votes with the title or the number – <code>1</code>, <code>#1</code>, <code>vote 1</code>,{' '}
           <code>!vote 1</code>. Drag to reorder.

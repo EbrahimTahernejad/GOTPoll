@@ -4,6 +4,8 @@ export type ChatMessage = {
   platform: Platform;
   userId: string;
   text: string;
+  /** which configured chat it came from (set by the engine) */
+  channel?: string;
 };
 
 export type Deliver = (m: ChatMessage) => void;

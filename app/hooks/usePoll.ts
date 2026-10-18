@@ -17,6 +17,7 @@ const EMPTY: PollSnapshot = {
   unmatched: [],
   sources: [],
   catalogPending: false,
+  owner: 'poll',
 };
 
 /** Live poll state in the Electron app – pushed from the main process. */

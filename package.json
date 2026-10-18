@@ -79,7 +79,7 @@
     "update-shows": "pnpm build:electron && node scripts/electron-node.mjs build/electron/catalog/cli.js assets/shows.db",
     "build:electron": "tsc -p electron/tsconfig.json && node -e \"require('fs').copyFileSync('build/electron/preload.js','build/electron/preload.mjs')\"",
     "bench:matching": "pnpm build:electron && node --no-warnings scripts/bench-matching.mjs",
-    "test": "pnpm build:electron && node --no-warnings --test tests/matcher.test.mjs tests/engine.test.mjs tests/supervisor.test.mjs tests/sources.test.mjs tests/downloads.test.mjs tests/tunnel.test.mjs && node scripts/electron-node.mjs --test tests/store.electron.test.mjs",
+    "test": "pnpm build:electron && node --no-warnings --test tests/matcher.test.mjs tests/engine.test.mjs tests/tournament.test.mjs tests/supervisor.test.mjs tests/sources.test.mjs tests/downloads.test.mjs tests/tunnel.test.mjs && node scripts/electron-node.mjs --test tests/store.electron.test.mjs",
     "test:live": "pnpm build:electron && electron scripts/live-sources.mjs",
     "bench:strategies": "pnpm build:electron && node --no-warnings scripts/bench-strategies.mjs",
     "test:tunnel": "pnpm build:electron && node --no-warnings scripts/live-tunnel.mjs"

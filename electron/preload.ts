@@ -37,6 +37,11 @@ const api: Window['GOTPoll'] = {
     phrasesFor: (showId) => invoke('poll:phrasesFor', showId),
     onUpdate: (cb) => subscribe('poll:update', cb),
   },
+  tournament: {
+    snapshot: () => invoke('tournament:snapshot'),
+    act: (action) => invoke('tournament:act', action),
+    onUpdate: (cb) => subscribe('tournament:update', cb),
+  },
   ignores: {
     list: () => invoke('ignores:list'),
     set: (showId, ignored) => invoke('ignores:set', showId, ignored),

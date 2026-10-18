@@ -28,7 +28,12 @@ declare global {
   };
 
   /** option = its number in a shortlist poll (1-based) */
-  type RankedShow = Show & { count: number; option?: number };
+  /**
+   * option    – its number in a shortlist poll (1-based)
+   * breakdown – shortlist polls: votes per chat (channel id, or the platform
+   *             when the source has no channel – the dev simulator)
+   */
+  type RankedShow = Show & { count: number; option?: number; breakdown?: Record<string, number> };
 
   type MatchStage = 'exact' | 'token' | 'fuzzy' | 'learned';
 
@@ -81,7 +86,11 @@ declare global {
     sources: ChannelState[];
     /** catalog changed since this poll started – applies to the next poll */
     catalogPending: boolean;
+    /** who started the current run – a tournament round, or a plain poll */
+    owner: PollOwner;
   };
+
+  type PollOwner = 'poll' | 'tournament';
 
   type PublicEntry = {
     id: number;
@@ -94,7 +103,16 @@ declare global {
     count: number;
     /** shortlist poll: the number chat can type */
     option?: number;
+    /** shortlist poll: votes per chat (see PublicChannel) */
+    breakdown?: Record<string, number>;
   };
+
+  /**
+   * An enabled chat as the viewer page labels it. `name` is only set when
+   * the streamer listens to two or more chats on the same platform –
+   * otherwise the platform alone says it all.
+   */
+  type PublicChannel = { id: string; platform: ChatPlatform; name: string | null };
 
   type PublicSnapshot = {
     version: number;
@@ -106,6 +124,155 @@ declare global {
     totalVoters: number;
     totalVotes: number;
     ranking: PublicEntry[];
+    channels: PublicChannel[];
+    /** an open tournament takes over the viewer page */
+    tournament: PublicTournament | null;
+  };
+
+  // ------------------------------------------------------------ tournament
+  //
+  //   open round      any show, chat may back several (top N−Y go through)
+  //   qualifiers      top M shown; Y returning shows are already in
+  //   bracket         N entries, editable; 1v1s, one vote per viewer
+  //   champion
+
+  type TournamentConfig = {
+    title: string;
+    /** N – bracket entries, returning shows included */
+    size: number;
+    /** M – how many open-round results the qualifiers screen shows */
+    showTop: number;
+    /** Y – returning shows (recent runners-up), straight into the bracket */
+    carried: number[];
+    filters: PollFilters;
+    /** play the semi-final losers for third (before or after the final) */
+    thirdPlace: boolean;
+  };
+
+  type TournamentPhase = 'open' | 'open-results' | 'bracket' | 'done';
+  /** what the viewer page shows */
+  type TournamentScreen = 'open' | 'open-results' | 'bracket' | 'intro' | 'match' | 'champion';
+  type BoutStage = 'intro' | 'voting' | 'result';
+
+  type MatchResult = {
+    a: number;
+    b: number;
+    /** null = a tie the streamer still has to settle */
+    winner: number | null;
+    votes: [number, number];
+    breakdown: [Record<string, number>, Record<string, number>];
+    /** winner picked by hand */
+    manual?: boolean;
+    endedAt: number;
+  };
+
+  type Tournament = {
+    id: string;
+    createdAt: number;
+    config: TournamentConfig;
+    phase: TournamentPhase;
+    screen: TournamentScreen;
+    open: { ranking: { id: number; count: number }[]; startedAt: number; endedAt: number | null; run: number };
+    /** first-round order, a power of two long; null = bye */
+    slots: (number | null)[];
+    /** by match key "round-index"; only valid while its pairing still stands */
+    results: Record<string, MatchResult>;
+    live: { key: string; stage: BoutStage; run: number; at: number } | null;
+    /** the match the bracket screen points at */
+    focus: string | null;
+  };
+
+  type BracketStatus = 'waiting' | 'ready' | 'live' | 'done' | 'tie' | 'bye' | 'empty';
+
+  type BracketMatch = {
+    key: string;
+    round: number;
+    index: number;
+    /** show id · null = nobody (bye) · undefined = not decided yet */
+    a: number | null | undefined;
+    b: number | null | undefined;
+    status: BracketStatus;
+    winner: number | null | undefined;
+    result: MatchResult | null;
+  };
+
+  type TournamentRecord = {
+    id: string;
+    title: string;
+    finishedAt: number;
+    champion: number;
+    runnerUp: number;
+    third?: number;
+    entries: number[];
+  };
+
+  type TournamentSnapshot = {
+    tournament: Tournament | null;
+    /** rounds, first to final (derived from slots + results) */
+    rounds: BracketMatch[][];
+    /** the third-place match (null when off, or before the semis exist) */
+    third: BracketMatch | null;
+    draft: TournamentConfig;
+    history: TournamentRecord[];
+    canUndo: boolean;
+    /** what the next undo reverts, for the button's tooltip */
+    undoLabel: string | null;
+  };
+
+  type TournamentAction =
+    | { type: 'draft'; patch: Partial<TournamentConfig> }
+    | { type: 'start-open' }
+    | { type: 'stop-open' }
+    | { type: 'retry-open' }
+    | { type: 'build-bracket' }
+    | { type: 'reseed' }
+    | { type: 'shuffle' }
+    | { type: 'set-slot'; index: number; showId: number | null }
+    | { type: 'swap-slots'; a: number; b: number }
+    | { type: 'start-match'; key: string }
+    | { type: 'begin-voting' }
+    | { type: 'stop-match' }
+    | { type: 'cancel-match' }
+    | { type: 'retry-match'; key: string }
+    | { type: 'set-winner'; key: string; showId: number }
+    | { type: 'clear-result'; key: string }
+    | { type: 'continue' }
+    | { type: 'show'; screen: TournamentScreen; focus?: string | null }
+    | { type: 'undo' }
+    | { type: 'close' }
+    | { type: 'third-place'; on: boolean }
+    | { type: 'forget-history'; id: string };
+
+  type PublicMatch = {
+    key: string;
+    round: number;
+    index: number;
+    a: PublicEntry | null;
+    b: PublicEntry | null;
+    status: BracketStatus;
+    winner: number | null;
+    votes: [number, number] | null;
+    breakdown: [Record<string, number>, Record<string, number>] | null;
+  };
+
+  type PublicTournament = {
+    id: string;
+    title: string;
+    phase: TournamentPhase;
+    screen: TournamentScreen;
+    size: number;
+    /** open-round places that go through (N − Y) */
+    qualifySpots: number;
+    carried: PublicEntry[];
+    /** frozen open-round standings, top M (live ones come in `ranking`) */
+    standings: PublicEntry[];
+    rounds: PublicMatch[][];
+    third: PublicMatch | null;
+    live: { key: string; stage: BoutStage; at: number } | null;
+    focus: string | null;
+    champion: PublicEntry | null;
+    runnerUp: PublicEntry | null;
+    thirdPlace: PublicEntry | null;
   };
 
   /** One chat to listen to. Any number per platform. */
@@ -262,6 +429,12 @@ declare global {
         dismiss: (phrase: string) => Promise<void>;
         phrasesFor: (showId: number) => Promise<PollPhrase[]>;
         onUpdate: (cb: (s: PollSnapshot) => void) => () => void;
+      };
+      tournament: {
+        snapshot: () => Promise<TournamentSnapshot>;
+        /** every step goes through here; errors come back as rejections */
+        act: (action: TournamentAction) => Promise<void>;
+        onUpdate: (cb: (s: TournamentSnapshot) => void) => () => void;
       };
       ignores: {
         list: () => Promise<number[]>;

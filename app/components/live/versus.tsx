@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '~/lib/utils';
 import AnimatedNumber from './animated-number';
 import Confetti, { type ConfettiHandle } from './confetti';
+import ChatSplit from './chat-split';
 import Cover from './cover';
 
 // Two-option shortlist poll: a tug of war. Each option owns its side of the
@@ -34,12 +35,16 @@ function Side({
   share,
   total,
   state,
+  channels,
+  layoutPrefix,
 }: {
   entry: PublicEntry;
   side: 0 | 1;
   share: number; // 0..100 of the screen this side owns
   total: number;
   state: 'live' | 'winner' | 'loser' | 'tie';
+  channels: PublicChannel[];
+  layoutPrefix?: string;
 }) {
   const color = entry.color ?? SIDE_COLORS[side];
   const pct = total ? Math.round((entry.count / total) * 100) : 50;
@@ -70,6 +75,7 @@ function Side({
         <div className="relative">
           <Cover
             entry={entry}
+            layoutId={layoutPrefix ? `${layoutPrefix}${entry.id}` : undefined}
             className="aspect-[3/4] w-[min(14vw,32vh)] rounded-[1.2vw] shadow-2xl shadow-black/70"
           />
           <div
@@ -104,6 +110,7 @@ function Side({
             {pct}%
           </span>
         </div>
+        {entry.breakdown && <ChatSplit breakdown={entry.breakdown} channels={channels} className="text-[0.95vw]" />}
         {state === 'live' && (
           <div className="rounded-full bg-white/10 px-[1vw] py-[0.3vw] text-[0.95vw] text-white/80 backdrop-blur">
             type <b className="text-white">{entry.option ?? side + 1}</b> or the title
@@ -124,7 +131,16 @@ function Side({
   );
 }
 
-export default function Versus({ snap, final = false }: { snap: PublicSnapshot; final?: boolean }) {
+export default function Versus({
+  snap,
+  final = false,
+  layoutPrefix,
+}: {
+  snap: Pick<PublicSnapshot, 'ranking' | 'endedAt' | 'channels'>;
+  final?: boolean;
+  /** shared-element id prefix for the covers (tournament screens morph into this) */
+  layoutPrefix?: string;
+}) {
   // fixed sides by option number – the board shouldn't flip when the lead changes
   const [a, b] = [...snap.ranking].sort((x, y) => (x.option ?? 0) - (y.option ?? 0));
   const total = (a?.count ?? 0) + (b?.count ?? 0);
@@ -163,10 +179,10 @@ export default function Versus({ snap, final = false }: { snap: PublicSnapshot; 
         animate={{ width: `${leftWidth}%` }}
         transition={{ type: 'spring', stiffness: final && revealed ? 60 : 90, damping: final && revealed ? 14 : 20 }}
       >
-        <Side entry={a} side={0} share={leftWidth} total={total} state={stateOf(0)} />
+        <Side entry={a} side={0} share={leftWidth} total={total} state={stateOf(0)} channels={snap.channels} layoutPrefix={layoutPrefix} />
       </motion.div>
       <div className="relative h-full min-w-0 flex-1">
-        <Side entry={b} side={1} share={100 - leftWidth} total={total} state={stateOf(1)} />
+        <Side entry={b} side={1} share={100 - leftWidth} total={total} state={stateOf(1)} channels={snap.channels} layoutPrefix={layoutPrefix} />
       </div>
 
       {/* the front line + VS medallion riding it */}

@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain, shell } from 'electron';
 import { describeChannel, testChannel } from './poll/sources/factory.js';
 import { shareInfo, startTunnel, stopTunnel, tunnel } from './sharing.js';
-import { ai, catalog, hardware, poll, prepareAi, probe, search, sourceDeps, user, warmUpRumble } from './services.js';
+import { ai, catalog, hardware, poll, prepareAi, probe, search, sourceDeps, tournament, user, warmUpRumble } from './services.js';
 
 const broadcast = (channel: string, payload: unknown) => {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send(channel, payload);
@@ -10,6 +10,7 @@ const broadcast = (channel: string, payload: unknown) => {
 catalog.on('status', (s) => broadcast('catalog:status', s));
 catalog.on('changed', (info) => broadcast('catalog:changed', info));
 poll.on('update', (s) => broadcast('poll:update', s));
+tournament.on('update', (s) => broadcast('tournament:update', s));
 ai.on('status', (s) => broadcast('ai:status', s));
 tunnel.on('status', (s) => broadcast('share:status', s));
 
@@ -46,9 +47,26 @@ ipcMain.handle('catalog:search', (_, query: string, limit?: number) => search(qu
 ipcMain.handle('catalog:probe', (_, message: string) => probe(message));
 
 // ---- poll
-ipcMain.handle('poll:start', (_, config: PollConfig) => poll.start(config));
-ipcMain.handle('poll:stop', () => poll.stop());
-ipcMain.handle('poll:reset', () => poll.reset());
+// a plain poll can't take the engine away from an open tournament
+const notDuringTournament = () => {
+  if (tournament.snapshot().tournament) throw new Error('A tournament is open – close it first');
+};
+ipcMain.handle('poll:start', (_, config: PollConfig) => {
+  notDuringTournament();
+  return poll.start(config);
+});
+ipcMain.handle('poll:stop', () => {
+  notDuringTournament();
+  poll.stop();
+});
+ipcMain.handle('poll:reset', () => {
+  notDuringTournament();
+  poll.reset();
+});
+
+// ---- tournament
+ipcMain.handle('tournament:snapshot', () => tournament.snapshot());
+ipcMain.handle('tournament:act', (_, action: TournamentAction) => tournament.act(action));
 ipcMain.handle('poll:snapshot', () => poll.snapshot());
 ipcMain.handle('poll:assign', (_, phrase: string, showId: number) => poll.assign(phrase, showId));
 ipcMain.handle('poll:dismiss', (_, phrase: string) => poll.dismiss(phrase));

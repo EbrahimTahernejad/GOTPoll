@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import getFreePort from 'get-port';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { poll, user } from './services.js';
+import { poll, publicFeed, tournament, user } from './services.js';
 import { isPublicRequest, isPublicUpgrade } from './tunnel/allowlist.js';
 
 // Viewer page server (OBS browser source / second screen).
@@ -21,7 +21,7 @@ const server = createServer(app);
 export const port = await getFreePort({ port: [4747, 4748, 4749] });
 
 app.get('/api/counts', (_req: Request, res: Response) => {
-  res.json(poll.publicSnapshot());
+  res.json(publicFeed());
 });
 
 // Dev only: drive a poll with fake chat to see the viewer page move.
@@ -65,7 +65,7 @@ if (isDev) {
       res.status(400).send('bad hash');
       return;
     }
-    if (route && !['/', '/settings'].includes(route)) {
+    if (route && !['/', '/settings', '/tournament'].includes(route)) {
       res.status(400).send('unknown route');
       return;
     }
@@ -91,21 +91,40 @@ if (isDev) {
     res.type('png').send(img.toPNG());
   });
 
+  // Dev only: drive the tournament without clicking.
+  //   /api/dev/tournament?a={"type":"start-open"}
+  app.get('/api/dev/tournament', async (req: Request, res: Response) => {
+    if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '')) {
+      res.status(403).end();
+      return;
+    }
+    try {
+      if (req.query.a) await tournament.act(JSON.parse(String(req.query.a)) as TournamentAction);
+      const s = tournament.snapshot();
+      res.json({ phase: s.tournament?.phase ?? null, screen: s.tournament?.screen, live: s.tournament?.live, focus: s.tournament?.focus, undo: s.undoLabel });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   let timer: NodeJS.Timeout | null = null;
   app.get('/api/dev/sim', async (req: Request, res: Response) => {
     const rate = Number(req.query.rate ?? 6);
     if (timer) clearInterval(timer);
     timer = null;
     if (rate > 0) {
-      if (poll.snapshot().state !== 'running') {
+      // a tournament runs its own rounds – the sim only plays chat into them
+      if (!poll.isRunning && !tournament.snapshot().tournament) {
         const s = user.settings();
         await poll.start({ mode: s.pollMode, filters: s.pollFilters, shortlist: s.pollShortlist }, { sources: false });
       }
+      const platforms = ['twitch', 'twitch', 'youtube', 'rumble'] as const;
       timer = setInterval(() => {
-        poll.ingest({ platform: 'twitch', userId: `sim${Math.floor(Math.random() * 4000)}`, text: pick() });
+        const platform = platforms[Math.floor(Math.random() * platforms.length)];
+        poll.ingest({ platform, userId: `sim${Math.floor(Math.random() * 4000)}`, text: pick() });
       }, 1000 / rate);
     }
-    if (rate <= 0 && req.query.end) poll.stop();
+    if (rate <= 0 && req.query.end && !tournament.snapshot().tournament) poll.stop();
     res.json({ rate, state: poll.snapshot().state });
   });
 }
@@ -135,7 +154,7 @@ const alive = new WeakMap<WebSocket, boolean>();
 // permessage-deflate extension, this survives tunnels (Cloudflare's edge
 // strips WebSocket extensions) – browsers inflate with DecompressionStream.
 const packed = new WeakSet<WebSocket>();
-let last = JSON.stringify({ type: 'snapshot', data: poll.publicSnapshot() });
+let last = JSON.stringify({ type: 'snapshot', data: publicFeed() });
 let lastZ: Buffer | null = null;
 const deflated = () => (lastZ ??= deflateRawSync(last, { level: 6 }));
 
@@ -146,15 +165,17 @@ wss.on('connection', (ws, req) => {
   ws.send(packed.has(ws) ? deflated() : last);
 });
 
-poll.on('update', (s) => {
-  const msg = JSON.stringify({ type: 'snapshot', data: poll.publicSnapshot(s) });
+function push(s?: PollSnapshot) {
+  const msg = JSON.stringify({ type: 'snapshot', data: publicFeed(s) });
   if (msg === last) return;
   last = msg;
   lastZ = null;
   for (const ws of wss.clients) {
     if (ws.readyState === ws.OPEN) ws.send(packed.has(ws) ? deflated() : msg);
   }
-});
+}
+poll.on('update', (s) => push(s));
+tournament.on('update', () => push());
 
 // drop clients that vanished without closing (sleeping laptops, OBS reloads)
 setInterval(() => {
@@ -196,7 +217,7 @@ pub.use((req, res, next) => {
   next();
 });
 pub.get('/api/counts', (_req: Request, res: Response) => {
-  res.json(poll.publicSnapshot());
+  res.json(publicFeed());
 });
 if (viteProxy) {
   pub.use('/', viteProxy);

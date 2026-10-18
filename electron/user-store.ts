@@ -73,6 +73,8 @@ export class UserStore {
       CREATE TABLE IF NOT EXISTS aliases (phrase TEXT PRIMARY KEY, show_id INTEGER NOT NULL, created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS dismissed (phrase TEXT PRIMARY KEY, created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS tournaments (id TEXT PRIMARY KEY, finished_at INTEGER NOT NULL, data TEXT NOT NULL);
     `);
     this.migrateFromGotPoll(path.join(dir, 'shows.db'));
   }
@@ -152,6 +154,42 @@ export class UserStore {
   dismiss(phrase: string) {
     this.db.prepare('INSERT OR IGNORE INTO dismissed (phrase, created_at) VALUES (?, ?)').run(phrase, Date.now());
     this.forget(phrase);
+  }
+
+  /** Working state that isn't a setting (the open tournament, its undo trail). */
+  loadState<T>(key: string): T | null {
+    const row = this.db.prepare('SELECT value FROM state WHERE key = ?').get(key) as { value: string } | undefined;
+    if (!row) return null;
+    try {
+      return JSON.parse(row.value) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  saveState(key: string, value: unknown) {
+    if (value === null || value === undefined) this.db.prepare('DELETE FROM state WHERE key = ?').run(key);
+    else this.db.prepare('INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)').run(key, JSON.stringify(value));
+  }
+
+  /** Finished tournaments, newest first. */
+  tournaments(): TournamentRecord[] {
+    const rows = this.db.prepare('SELECT data FROM tournaments ORDER BY finished_at DESC').all() as { data: string }[];
+    return rows.flatMap((r) => {
+      try {
+        return [JSON.parse(r.data) as TournamentRecord];
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  saveTournament(r: TournamentRecord) {
+    this.db.prepare('INSERT OR REPLACE INTO tournaments (id, finished_at, data) VALUES (?, ?, ?)').run(r.id, r.finishedAt, JSON.stringify(r));
+  }
+
+  forgetTournament(id: string) {
+    this.db.prepare('DELETE FROM tournaments WHERE id = ?').run(id);
   }
 
   settings(): Settings {

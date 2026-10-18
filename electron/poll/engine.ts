@@ -54,6 +54,13 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
   /** onePerViewer: voter -> phrase they currently vote with */
   private lastPhrase = new Map<string, string>();
   private onePerViewer = false;
+  /** voter -> the chat they last spoke in (per-chat counts in 1v1s) */
+  private voterChannel = new Map<string, string>();
+  /** shows that never count this run (a tournament's returning shows) */
+  private exclude = new Set<number>();
+  private owner: PollOwner = 'poll';
+  /** bumps on every start – lets a tournament tell its own run apart */
+  private runId = 0;
   private catalogVersionAtStart = '';
   private strategy: Strategy | null = null;
   private pendingAi = 0;
@@ -78,16 +85,43 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
 
   // ------------------------------------------------------------ lifecycle
 
-  async start(config: Partial<PollConfig>, opts: { sources?: boolean } = {}) {
+  get run() {
+    return this.runId;
+  }
+
+  get currentOwner() {
+    return this.owner;
+  }
+
+  get isRunning() {
+    return this.state === 'running';
+  }
+
+  async start(
+    config: Partial<PollConfig>,
+    opts: {
+      sources?: boolean;
+      /** a tournament round: doesn't touch the poll's saved settings */
+      owner?: PollOwner;
+      /** override the "one vote per viewer" setting for this run */
+      onePerViewer?: boolean;
+      exclude?: number[];
+    } = {}
+  ) {
     if (this.state === 'running') return;
     this.resetData();
+    this.runId++;
+    this.owner = opts.owner ?? 'poll';
+    this.exclude = new Set(opts.exclude ?? []);
     this.filters = cleanFilters(config.filters ?? this.filters);
     this.shortlist = cleanShortlist(config.shortlist ?? []);
     // a shortlist poll needs options; without them it's an open poll
     this.mode = config.mode === 'shortlist' && this.shortlist.length ? 'shortlist' : 'open';
-    this.user.setSettings({ pollFilters: this.filters, pollMode: config.mode ?? 'open', pollShortlist: this.shortlist });
+    if (this.owner === 'poll') {
+      this.user.setSettings({ pollFilters: this.filters, pollMode: config.mode ?? 'open', pollShortlist: this.shortlist });
+    }
     const settings = this.user.settings();
-    this.onePerViewer = settings.onePerViewer;
+    this.onePerViewer = opts.onePerViewer ?? settings.onePerViewer;
     this.ignored = this.user.ignores();
     this.dismissed = this.user.dismissed();
 
@@ -131,15 +165,32 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     this.schedule(true);
   }
 
-  stop() {
+  /**
+   * End counting. `keepSources` leaves the chats connected – a tournament
+   * moves from match to match without reconnecting every time.
+   */
+  stop(opts: { keepSources?: boolean } = {}) {
+    if (!opts.keepSources) this.disconnect();
     if (this.state !== 'running') return;
+    this.state = 'ended';
+    this.endedAt = Date.now();
+    this.schedule(true);
+  }
+
+  /** Pick up counting where it ended (undo of a stop). Votes are kept. */
+  resume() {
+    if (this.state !== 'ended' || !this.matcher) return;
+    this.state = 'running';
+    this.endedAt = null;
+    this.applyChannels();
+    this.schedule(true);
+  }
+
+  private disconnect() {
     const sups = [...this.supervisors.values()];
     this.supervisors.clear();
     this.status.clear();
     sups.forEach(({ sup }) => void sup.stop());
-    this.state = 'ended';
-    this.endedAt = Date.now();
-    this.schedule(true);
   }
 
   /** The computer woke up / network came back: reconnect everything now. */
@@ -153,7 +204,8 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
    * disabling/removing disconnects it, and untouched ones keep running.
    */
   applyChannels() {
-    if (this.state !== 'running') {
+    // between tournament rounds chats stay connected: keep them in sync too
+    if (this.state !== 'running' && !this.supervisors.size) {
       this.schedule();
       return;
     }
@@ -167,10 +219,10 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
         void sup.stop();
       }
     }
-    const deliver = (m: ChatMessage) => this.ingest(m);
     const since = () => this.startedAt ?? 0;
     for (const c of wanted) {
       if (this.supervisors.has(c.id)) continue;
+      const deliver = (m: ChatMessage) => this.ingest({ ...m, channel: c.id });
       const { session, tuning } = sessionFor(c, deliver, since, this.deps);
       const sup: Supervisor = new Supervisor({
         name: c.id,
@@ -193,6 +245,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     this.stop();
     this.resetData();
     this.state = 'idle';
+    this.owner = 'poll';
     this.startedAt = this.endedAt = null;
     this.schedule(true);
   }
@@ -201,6 +254,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     this.buckets.clear();
     this.votes.clear();
     this.lastPhrase.clear();
+    this.voterChannel.clear();
     this.messages = 0;
   }
 
@@ -231,7 +285,9 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     preset?: { showId: number; stage: MatchStage; score: number }
   ) {
     if (preset) this.messages++;
+    // one person per platform – the same Twitch account in two chats is one voter
     const voter = `${m.platform}:${m.userId}`;
+    this.voterChannel.set(voter, m.channel ?? m.platform);
 
     let bucket = this.buckets.get(phrase);
     if (!bucket) {
@@ -426,7 +482,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
         filteredVotes += set.size;
         continue;
       }
-      ranking.push({ ...show, count: set.size });
+      ranking.push({ ...show, count: set.size, ...(this.mode === 'shortlist' && { breakdown: this.breakdown(set) }) });
       totalVotes += set.size;
       set.forEach((v) => voters.add(v));
     }
@@ -435,7 +491,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       for (const [i, id] of this.shortlist.entries()) {
         const existing = ranking.find((r) => r.id === id);
         if (existing) existing.option = i + 1;
-        else if (this.shows.get(id) && !this.ignored.has(id)) ranking.push({ ...this.shows.get(id)!, count: 0, option: i + 1 });
+        else if (this.shows.get(id) && !this.ignored.has(id)) ranking.push({ ...this.shows.get(id)!, count: 0, option: i + 1, breakdown: {} });
       }
       ranking.sort((a, b) => b.count - a.count || (a.option ?? 99) - (b.option ?? 99));
     } else {
@@ -471,11 +527,22 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       catalogPending:
         this.state === 'running' && this.catalogVersionAtStart !== '' &&
         this.catalogVersionAtStart !== this.catalog.info().file,
+      owner: this.owner,
     };
+  }
+
+  private breakdown(voters: Set<string>) {
+    const out: Record<string, number> = {};
+    for (const v of voters) {
+      const ch = this.voterChannel.get(v) ?? v.slice(0, v.indexOf(':'));
+      out[ch] = (out[ch] ?? 0) + 1;
+    }
+    return out;
   }
 
   /** Does this show count under the poll's filters? */
   private counts(show: Show) {
+    if (this.exclude.has(show.id)) return false;
     if (this.mode === 'shortlist') return this.shortlist.includes(show.id);
     if (!this.filters.formats.includes(show.format)) return false;
     // unknown release (old catalog): can't judge – count it
@@ -483,27 +550,31 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
   }
 
   publicSnapshot(s = this.snapshot()): PublicSnapshot {
+    const settings = this.user.settings();
+    const enabled = settings.channels.filter((c) => c.enabled);
     return {
       version: s.version,
-      title: this.user.settings().pollTitle,
+      title: settings.pollTitle,
       mode: s.mode,
       state: s.state,
       startedAt: s.startedAt,
       endedAt: s.endedAt,
       totalVoters: s.totalVoters,
       totalVotes: s.totalVotes,
-      ranking: s.ranking.slice(0, 40).map((r) => ({
-        id: r.id,
-        title: r.titleRomaji,
-        subtitle: r.titleEnglish && r.titleEnglish.toLowerCase() !== r.titleRomaji.toLowerCase() ? r.titleEnglish : null,
-        cover: r.coverImage,
-        color: r.coverColor,
-        format: r.format,
-        year: r.startYear,
-        count: r.count,
-        option: r.option,
+      ranking: s.ranking.slice(0, 40).map((r) => ({ ...publicEntry(r, r.count), option: r.option, breakdown: r.breakdown })),
+      channels: enabled.map((c) => ({
+        id: c.id,
+        platform: c.platform,
+        // a name only tells viewers something when one platform has several chats
+        name: enabled.filter((o) => o.platform === c.platform).length > 1 ? channelName(c) : null,
       })),
+      tournament: null,
     };
+  }
+
+  /** Library lookup for whoever needs show details (the tournament). */
+  show(id: number): Show | undefined {
+    return this.shows.get(id) ?? this.catalog.all().find((s) => s.id === id) ?? this.user.customShows().find((s) => s.id === id);
   }
 
   /** Coalesce bursts of chat into at most ~5 UI/websocket pushes a second. */
@@ -520,6 +591,26 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       this.emit('update', this.snapshot());
     }, EMIT_EVERY_MS);
   }
+}
+
+export function publicEntry(r: Show, count: number): PublicEntry {
+  return {
+    id: r.id,
+    title: r.titleRomaji,
+    subtitle: r.titleEnglish && r.titleEnglish.toLowerCase() !== r.titleRomaji.toLowerCase() ? r.titleEnglish : null,
+    cover: r.coverImage,
+    color: r.coverColor,
+    format: r.format,
+    year: r.startYear,
+    count,
+  };
+}
+
+/** What the streamer would call this chat: its label, else the channel name. */
+export function channelName(c: ChannelConfig) {
+  if (c.label) return c.label;
+  const t = c.target.replace(/^https?:\/\/(www\.)?/, '');
+  return (/(@[\w.-]+)/.exec(t)?.[1] ?? /(?:rumble\.com\/(?:c|user)\/)([^/?]+)/.exec(t)?.[1] ?? t).slice(0, 40);
 }
 
 function toPhrase(phrase: string, b: Bucket): PollPhrase {
