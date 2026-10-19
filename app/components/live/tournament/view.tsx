@@ -12,6 +12,7 @@ import DrawScreen from './draw';
 import { T_COVER } from './ids';
 import IntroScreen from './intro';
 import QualifiersScreen from './qualifiers';
+import ReportScreen from './report';
 
 // The viewer page while a tournament is open. Each screen is a full layer;
 // switching crossfades them while covers with the same show morph from one
@@ -59,6 +60,7 @@ export default function TournamentView({
     champion: 'Champion',
     draw: 'Tie on the qualifying line · settled by a draw',
     coin: t.coin?.key === 'cut' ? 'Two level for the last spot · settled by a coin flip' : 'Tied 1v1 · settled by a coin flip',
+    report: t.archived ? `Report · ${new Date(t.finishedAt ?? t.createdAt).toLocaleDateString()}` : 'Report',
   }[t.screen];
 
   // key per screen and, for match screens, per match: switching matches replays the entrance
@@ -94,7 +96,13 @@ export default function TournamentView({
           </AnimatePresence>
         </div>
         <div className="grow" />
-        <RoundTrail t={t} />
+        {t.archived ? (
+          <span className="mr-[1vw] rounded-full bg-sky-400/15 px-[0.9vw] py-[0.3vw] text-[0.8vw] font-bold tracking-[0.25em] text-sky-200 ring-1 ring-sky-300/30">
+            LOOKING BACK · {new Date(t.finishedAt ?? t.createdAt).toLocaleDateString()}
+          </span>
+        ) : (
+          <RoundTrail t={t} />
+        )}
         {counting && (
           <div className="flex items-center gap-[1.6vw] text-[0.95vw]">
             <Stat label="votes" value={snap.totalVotes} />
@@ -134,6 +142,7 @@ export default function TournamentView({
             {t.screen === 'champion' && <ChampionScreen t={t} />}
             {t.screen === 'draw' && t.cut?.picked && <DrawScreen t={t} />}
             {t.screen === 'coin' && t.coin && <CoinScreen t={t} />}
+            {t.screen === 'report' && <ReportScreen t={t} channels={snap.channels} />}
           </motion.main>
         </AnimatePresence>
       </LayoutGroup>

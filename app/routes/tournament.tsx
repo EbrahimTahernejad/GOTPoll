@@ -2,6 +2,8 @@ import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import {
   AlertTriangle,
   ArrowRight,
+  Archive,
+  Eye,
   Check,
   Coins,
   Dices,
@@ -160,6 +162,8 @@ export default function TournamentPage() {
             )}
           </AnimatePresence>
 
+          {snap?.viewing && <Viewing snap={snap} library={library} act={act} />}
+
           {!snap ? null : !t ? (
             <Setup snap={snap} library={library} act={act} pending={pending} pollBusy={poll.state === 'running'} />
           ) : t.phase === 'open' || t.phase === 'open-results' ? (
@@ -193,7 +197,7 @@ export default function TournamentPage() {
           {counting ? (
             <UnmatchedPanel phrases={poll.unmatched} onAssign={setAssigning} />
           ) : (
-            !t && <History snap={snap} library={library} act={act} />
+            <History snap={snap} library={library} act={act} />
           )}
         </aside>
       </div>
@@ -402,6 +406,17 @@ function History({
               )}
             </div>
             <span className="text-muted-foreground text-[10px]">{new Date(h.finishedAt).toLocaleDateString()}</span>
+            {h.viewable && (
+              <Button
+                size="sm"
+                variant={snap?.viewing?.record.id === h.id ? 'default' : 'outline'}
+                className="h-7 px-2 text-xs"
+                title="Show its bracket and report on the viewer page"
+                onClick={() => act(snap?.viewing?.record.id === h.id ? { type: 'stop-viewing' } : { type: 'view-archive', id: h.id })}
+              >
+                <Eye className="h-3.5 w-3.5" /> {snap?.viewing?.record.id === h.id ? 'Viewing' : 'View'}
+              </Button>
+            )}
             <button
               className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100"
               title="Forget it"
@@ -829,6 +844,75 @@ function LiveMatch({
   );
 }
 
+// ------------------------------------------------------------ a past tournament, re-opened
+
+function Viewing({
+  snap,
+  library,
+  act,
+}: {
+  snap: TournamentSnapshot;
+  library: Map<number, Show>;
+  act: (a: TournamentAction) => Promise<void>;
+}) {
+  const v = snap.viewing!;
+  const t = v.tournament;
+  const matches = [...v.rounds.flat(), ...(v.third ? [v.third] : [])].filter((m) => m.result);
+  const screens: { screen: TournamentScreen; label: string; ok: boolean }[] = [
+    { screen: 'report', label: 'Report', ok: true },
+    { screen: 'open-results', label: 'Qualifiers', ok: true },
+    { screen: 'draw', label: 'Draw', ok: t.cut?.method === 'draw' },
+    { screen: 'bracket', label: 'Bracket', ok: v.rounds.length > 0 },
+    { screen: 'coin', label: 'Coin flip', ok: !!t.coin },
+    { screen: 'champion', label: 'Champion', ok: true },
+  ];
+  return (
+    <section className="bg-card/60 rounded-xl border border-sky-500/40">
+      <div className="flex items-center gap-3 px-4 py-2.5">
+        <Archive className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">
+            Viewing {v.record.title}
+            <span className="text-muted-foreground ml-2 text-xs font-normal">
+              finished {new Date(v.record.finishedAt).toLocaleDateString()} · read-only
+            </span>
+          </div>
+          <div className="text-muted-foreground text-[11px]">The viewer page shows it until you stop viewing or start a new tournament.</div>
+        </div>
+        <div className="grow" />
+        <Button size="sm" variant="outline" onClick={() => act({ type: 'stop-viewing' })}>
+          <X className="h-3.5 w-3.5" /> Stop viewing
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-sky-500/20 px-4 py-2">
+        <span className="text-muted-foreground mr-1 text-[11px] font-medium tracking-wide uppercase">On screen</span>
+        {screens
+          .filter((o) => o.ok)
+          .map((o) => (
+            <FilterChip key={o.screen} on={t.screen === o.screen} onClick={() => act({ type: 'show', screen: o.screen })}>
+              {o.label}
+            </FilterChip>
+          ))}
+      </div>
+      {matches.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-sky-500/20 px-4 py-2">
+          <span className="text-muted-foreground mr-1 text-[11px] font-medium tracking-wide uppercase">Replay a match</span>
+          {matches.map((m) => (
+            <FilterChip
+              key={m.key}
+              on={t.screen === 'match' && t.focus === m.key}
+              onClick={() => act({ type: 'show', screen: 'match', focus: m.key })}
+              title={`${library.get(m.a as number)?.titleRomaji} vs ${library.get(m.b as number)?.titleRomaji}`}
+            >
+              {matchLabel(m.key, v.rounds.length)}
+            </FilterChip>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ------------------------------------------------------------ viewer page control
 
 function ScreenPicker({ snap, act }: { snap: TournamentSnapshot; act: (a: TournamentAction) => Promise<void> }) {
@@ -845,6 +929,7 @@ function ScreenPicker({ snap, act }: { snap: TournamentSnapshot; act: (a: Tourna
     { screen: 'match', label: 'Match', ok: bracket && !!focus && (t.live?.key === focus.key || !!focus.result) },
     { screen: 'coin', label: 'Coin flip', ok: !!t.coin && (t.coin.key !== 'cut' || t.cut?.method === 'coin') },
     { screen: 'champion', label: 'Champion', ok: t.phase === 'done' },
+    { screen: 'report', label: 'Report', ok: bracket },
   ];
   return (
     <div className="bg-card/60 rounded-xl border px-3 py-2.5">

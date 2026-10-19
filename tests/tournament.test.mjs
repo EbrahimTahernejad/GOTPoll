@@ -40,6 +40,7 @@ function setup() {
     loadState: (k) => (state.has(k) ? structuredClone(state.get(k)) : null),
     saveState: (k, v) => (v == null ? state.delete(k) : state.set(k, structuredClone(v))),
     tournaments: () => [...history.values()],
+    tournament: (id) => history.get(id) ?? null,
     saveTournament: (r) => history.set(r.id, r),
     forgetTournament: (id) => history.delete(id),
   };
@@ -308,4 +309,35 @@ test('two level for one spot: the random option is a coin flip, not a draw', asy
   assert.equal(t.snapshot().tournament.screen, 'open-results');
   await t.act({ type: 'build-bracket' });
   assert.deepEqual(t.snapshot().tournament.slots.sort(), [1, s.cut.picked[0]].sort());
+});
+
+test('a finished tournament can be re-opened read-only, on its report', async () => {
+  const { engine, t } = setup();
+  await t.act({ type: 'draft', patch: { size: 2, carried: [], title: 'Old Cup' } });
+  await t.act({ type: 'start-open' });
+  say(engine, 'a', 'sousou no frieren'); say(engine, 'a', 'jujutsu kaisen'); say(engine, 'b', 'sousou no frieren');
+  await t.act({ type: 'stop-open' });
+  await t.act({ type: 'build-bracket' });
+  await t.act({ type: 'set-winner', key: '0-0', showId: 1 });
+  await t.act({ type: 'close' });
+  const [rec] = t.snapshot().history;
+  assert.equal(rec.viewable, true);
+  assert.equal('data' in rec, false); // lists stay light
+
+  await t.act({ type: 'view-archive', id: rec.id });
+  let pub = t.publicView();
+  assert.equal(pub.archived, true);
+  assert.equal(pub.screen, 'report');
+  assert.equal(pub.champion.id, 1);
+  assert.equal(pub.openVotes, 3);
+  await t.act({ type: 'show', screen: 'bracket' });
+  assert.equal(t.publicView().screen, 'bracket');
+  await assert.rejects(t.act({ type: 'set-winner', key: '0-0', showId: 2 }), /No tournament is open/);
+
+  // a new tournament takes the viewer page back
+  await t.act({ type: 'start-open' });
+  pub = t.publicView();
+  assert.equal(pub.archived, false);
+  assert.equal(t.snapshot().viewing, null);
+  engine.stop();
 });

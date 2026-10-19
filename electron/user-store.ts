@@ -184,6 +184,15 @@ export class UserStore {
     });
   }
 
+  tournament(id: string): TournamentRecord | null {
+    const row = this.db.prepare('SELECT data FROM tournaments WHERE id = ?').get(id) as { data: string } | undefined;
+    try {
+      return row ? (JSON.parse(row.data) as TournamentRecord) : null;
+    } catch {
+      return null;
+    }
+  }
+
   saveTournament(r: TournamentRecord) {
     this.db.prepare('INSERT OR REPLACE INTO tournaments (id, finished_at, data) VALUES (?, ?, ?)').run(r.id, r.finishedAt, JSON.stringify(r));
   }

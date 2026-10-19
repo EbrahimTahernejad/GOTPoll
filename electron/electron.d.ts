@@ -151,7 +151,7 @@ declare global {
 
   type TournamentPhase = 'open' | 'open-results' | 'bracket' | 'done';
   /** what the viewer page shows */
-  type TournamentScreen = 'open' | 'open-results' | 'draw' | 'bracket' | 'intro' | 'match' | 'coin' | 'champion';
+  type TournamentScreen = 'open' | 'open-results' | 'draw' | 'bracket' | 'intro' | 'match' | 'coin' | 'champion' | 'report';
   type BoutStage = 'intro' | 'voting' | 'result';
 
   type MatchResult = {
@@ -224,7 +224,12 @@ declare global {
     runnerUp: number;
     third?: number;
     entries: number[];
+    /** the whole tournament as it finished – lets it be re-opened to view */
+    data?: Tournament;
   };
+
+  /** A past tournament in a list (without its full data). */
+  type TournamentSummary = Omit<TournamentRecord, 'data'> & { viewable: boolean };
 
   type TournamentSnapshot = {
     tournament: Tournament | null;
@@ -236,7 +241,9 @@ declare global {
     qualified: number[];
     tied: number[];
     draft: TournamentConfig;
-    history: TournamentRecord[];
+    history: TournamentSummary[];
+    /** a past tournament re-opened for the viewer page (read-only) */
+    viewing: { record: TournamentSummary; tournament: Tournament; rounds: BracketMatch[][]; third: BracketMatch | null } | null;
     canUndo: boolean;
     /** what the next undo reverts, for the button's tooltip */
     undoLabel: string | null;
@@ -267,7 +274,9 @@ declare global {
     | { type: 'cut-draw' }
     | { type: 'cut-pick'; ids: number[] }
     | { type: 'coin-flip'; key: string }
-    | { type: 'forget-history'; id: string };
+    | { type: 'forget-history'; id: string }
+    | { type: 'view-archive'; id: string }
+    | { type: 'stop-viewing' };
 
   type PublicMatch = {
     key: string;
@@ -280,11 +289,19 @@ declare global {
     votes: [number, number] | null;
     breakdown: [Record<string, number>, Record<string, number>] | null;
     coin: boolean;
+    /** winner picked by hand */
+    manual: boolean;
   };
 
   type PublicTournament = {
     id: string;
     title: string;
+    /** a past tournament re-opened to look back at */
+    archived: boolean;
+    createdAt: number;
+    finishedAt: number | null;
+    /** open-round votes for the shows that got any (top 100) */
+    openVotes: number;
     phase: TournamentPhase;
     screen: TournamentScreen;
     size: number;

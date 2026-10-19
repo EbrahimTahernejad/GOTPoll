@@ -43,10 +43,17 @@ type Engine = Pick<
   PollEngine,
   'start' | 'stop' | 'resume' | 'reset' | 'snapshot' | 'show' | 'on' | 'run' | 'currentOwner' | 'isRunning'
 >;
-type Store = Pick<UserStore, 'settings' | 'loadState' | 'saveState' | 'tournaments' | 'saveTournament' | 'forgetTournament'>;
+type Store = Pick<UserStore, 'settings' | 'loadState' | 'saveState' | 'tournaments' | 'tournament' | 'saveTournament' | 'forgetTournament'>;
+
+const summary = (r: TournamentRecord): TournamentSummary => {
+  const { data, ...rest } = r;
+  return { ...rest, viewable: !!data };
+};
 
 export class TournamentController extends EventEmitter<{ update: [TournamentSnapshot] }> {
   private t: Tournament | null;
+  /** a past tournament re-opened for the viewer page */
+  private viewing: { record: TournamentRecord; t: Tournament } | null = null;
   private undoStack: UndoEntry[];
   private draft: TournamentConfig;
   private introTimer: NodeJS.Timeout | null = null;
@@ -78,7 +85,12 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
       third: this.third(rounds),
       ...this.standing(),
       draft: this.draft,
-      history: this.user.tournaments(),
+      history: this.user.tournaments().map(summary),
+      viewing: this.viewing && (() => {
+        const v = this.viewing.t;
+        const vr = this.rounds(v);
+        return { record: summary(this.viewing.record), tournament: v, rounds: vr, third: this.third(vr, v) };
+      })(),
       canUndo: this.undoStack.length > 0,
       undoLabel: this.undoStack.at(-1)?.label ?? null,
     };
@@ -86,15 +98,17 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
 
   /** The viewer page's slice of it. */
   publicView(): PublicTournament | null {
-    const t = this.t;
+    // a re-opened past tournament takes the screen while it's being viewed
+    const archived = !!this.viewing;
+    const t = this.viewing?.t ?? this.t;
     if (!t) return null;
     const entry = (id: number | null | undefined, count = 0) => {
       if (typeof id !== 'number') return null;
       const s = this.poll.show(id);
       return s ? publicEntry(s, count) : null;
     };
-    const rounds = this.rounds();
-    const third = this.third(rounds);
+    const rounds = this.rounds(t);
+    const third = this.third(rounds, t);
     const pub = (m: BracketMatch): PublicMatch => ({
       key: m.key,
       round: m.round,
@@ -106,23 +120,28 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
       votes: m.result?.votes ?? null,
       breakdown: m.result?.breakdown ?? null,
       coin: !!m.result?.coin,
+      manual: !!m.result?.manual,
     });
     const coinMatch = t.coin && t.coin.key !== 'cut' ? [...rounds.flat(), third].find((m) => m?.key === t.coin!.key) : null;
     return {
       id: t.id,
       title: t.config.title,
+      archived,
+      createdAt: t.createdAt,
+      finishedAt: archived ? this.viewing!.record.finishedAt : null,
+      openVotes: t.open.ranking.reduce((n, r) => n + r.count, 0),
       phase: t.phase,
       screen: t.screen,
       size: t.config.size,
       qualifySpots: Math.max(0, t.config.size - t.config.carried.length),
       carried: t.config.carried.flatMap((id) => entry(id) ?? []),
       standings: t.open.ranking.slice(0, t.config.showTop).flatMap((r) => entry(r.id, r.count) ?? []),
-      ...this.standing(),
+      ...this.standing(t),
       cut: t.cut ? { ...t.cut, candidates: t.cut.candidates.flatMap((id) => entry(id, t.cut!.votes) ?? []) } : null,
       coin: this.coinInfo(t, coinMatch),
       rounds: rounds.map((row) => row.map(pub)),
       third: third && pub(third),
-      live: t.live && { key: t.live.key, stage: t.live.stage, at: t.live.at },
+      live: !archived && t.live ? { key: t.live.key, stage: t.live.stage, at: t.live.at } : null,
       focus: t.focus,
       champion: entry(championOf(rounds)),
       runnerUp: entry(runnerUpOf(rounds)),
@@ -131,17 +150,17 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
   }
 
   /** A match counts as live from its intro until its result is in. */
-  private liveKey() {
-    return this.t?.live && this.t.live.stage !== 'result' ? this.t.live.key : null;
+  private liveKey(t = this.t) {
+    return t === this.t && t?.live && t.live.stage !== 'result' ? t.live.key : null;
   }
 
-  private rounds() {
-    return this.t ? deriveRounds(this.t.slots, this.t.results, this.liveKey()) : [];
+  private rounds(t = this.t) {
+    return t ? deriveRounds(t.slots, t.results, this.liveKey(t)) : [];
   }
 
   /** the third-place match, when the tournament plays one */
-  private third(rounds = this.rounds()) {
-    return this.t?.config.thirdPlace ? deriveThird(rounds, this.t.results, this.liveKey()) : null;
+  private third(rounds = this.rounds(), t = this.t) {
+    return t?.config.thirdPlace ? deriveThird(rounds, t.results, this.liveKey(t)) : null;
   }
 
   private match(key: string) {
@@ -182,6 +201,7 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
       }
       case 'start-open': {
         if (this.t) throw new Error('A tournament is already open');
+        this.viewing = null; // a new tournament takes the viewer page back
         if (this.poll.isRunning && this.poll.currentOwner === 'poll') throw new Error('End the running poll first');
         if (this.draft.carried.length >= this.draft.size) throw new Error('Leave at least one spot for the open round');
         this.push('Start the open round');
@@ -422,6 +442,10 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
         return;
       }
       case 'show': {
+        if (this.viewing) {
+          this.showArchived(a.screen, a.focus);
+          return;
+        }
         const t = this.t;
         if (!t) throw new Error('No tournament is open');
         const focus = a.focus === undefined ? t.focus : a.focus;
@@ -437,6 +461,7 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
           champion: t.phase === 'done',
           draw: t.cut?.method === 'draw',
           coin: !!this.coinInfo(t),
+          report: t.phase === 'bracket' || t.phase === 'done',
         };
         if (!ok[a.screen]) throw new Error('Nothing to show there yet');
         t.screen = a.screen;
@@ -472,13 +497,49 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
         return;
       }
       case 'forget-history': {
+        if (this.viewing?.record.id === a.id) this.viewing = null;
         this.user.forgetTournament(a.id);
+        return;
+      }
+      case 'view-archive': {
+        const record = this.user.tournament(a.id);
+        if (!record?.data) throw new Error('That tournament was finished before reports were kept');
+        // read-only: nothing live, opens on its report
+        const t: Tournament = { ...structuredClone(record.data), live: null, screen: 'report' };
+        this.viewing = { record, t };
+        return;
+      }
+      case 'stop-viewing': {
+        this.viewing = null;
         return;
       }
     }
   }
 
   // ------------------------------------------------------------ internals
+
+  /** Point the viewer page at a screen of the re-opened past tournament. */
+  private showArchived(screen: TournamentScreen, focusArg?: string | null) {
+    const t = this.viewing!.t;
+    const rounds = this.rounds(t);
+    const all = [...rounds.flat(), this.third(rounds, t)];
+    const focus = focusArg === undefined ? t.focus : focusArg;
+    const fm = focus ? all.find((m) => m?.key === focus) : null;
+    const coinMatch = t.coin && t.coin.key !== 'cut' ? all.find((m) => m?.key === t.coin!.key) : null;
+    const ok: Partial<Record<TournamentScreen, boolean>> = {
+      'open-results': true,
+      draw: t.cut?.method === 'draw',
+      bracket: rounds.length > 0,
+      report: true,
+      champion: championOf(rounds) !== null,
+      intro: !!fm && typeof fm.a === 'number' && typeof fm.b === 'number',
+      match: !!fm?.result,
+      coin: !!this.coinInfo(t, coinMatch ?? null),
+    };
+    if (!ok[screen]) throw new Error('Nothing to show there');
+    t.screen = screen;
+    t.focus = screen === 'coin' && t.coin!.key !== 'cut' ? t.coin!.key : focus;
+  }
 
   private need(...phases: TournamentPhase[]): Tournament {
     if (!this.t) throw new Error('No tournament is open');
@@ -531,8 +592,7 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
   }
 
   /** Who's through from the open round, and who's still level on the line. */
-  private standing(): { qualified: number[]; tied: number[] } {
-    const t = this.t;
+  private standing(t = this.t): { qualified: number[]; tied: number[] } {
     if (!t) return { qualified: [], tied: [] };
     const spots = Math.max(0, t.config.size - t.config.carried.length);
     const list = t.open.ranking.filter((r) => r.count > 0 && !t.config.carried.includes(r.id));
@@ -665,7 +725,8 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
         this.user.saveTournament({
           id: t.id,
           title: t.config.title,
-          finishedAt: Date.now(),
+          finishedAt: this.user.tournament(t.id)?.finishedAt ?? Date.now(),
+          data: { ...structuredClone(t), live: null },
           champion,
           runnerUp: runnerUpOf(rounds) ?? champion,
           third: thirdOf(this.third(rounds)) ?? undefined,
