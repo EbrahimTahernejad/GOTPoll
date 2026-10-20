@@ -43,6 +43,8 @@ import {
 } from '~/components/ui/dialog';
 import { Input } from '~/components/ui/input';
 import useLiveTime from '~/hooks/useLiveTime';
+import useCatalog from '~/hooks/useCatalog';
+import useLibrary from '~/hooks/useLibrary';
 import usePoll from '~/hooks/usePoll';
 import useTournament from '~/hooks/useTournament';
 import { channelsOf, matchLabel } from '~/lib/tournament';
@@ -68,14 +70,11 @@ const STEPS: { phase: TournamentPhase[]; label: string }[] = [
 export default function TournamentPage() {
   const snap = useTournament();
   const poll = usePoll();
-  const [library, setLibrary] = useState<Map<number, Show>>(new Map());
+  const library = useLibrary();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<TournamentAction['type'] | null>(null);
   const [assigning, setAssigning] = useState<PollPhrase | null>(null);
   const [closing, setClosing] = useState(false);
-  useEffect(() => {
-    window.GOTPoll.catalog.shows().then((list) => setLibrary(new Map(list.map((x) => [x.id, x]))));
-  }, []);
   useEffect(() => {
     if (!error) return;
     const t = setTimeout(() => setError(null), 6000);
@@ -249,6 +248,7 @@ function Setup({
   pollBusy: boolean;
 }) {
   const d = snap.draft;
+  const { info: catalogInfo } = useCatalog();
   const [title, setTitle] = useState(d.title);
   useEffect(() => setTitle(d.title), [d.title]);
   const set = (patch: Partial<TournamentConfig>) => act({ type: 'draft', patch });
@@ -308,14 +308,14 @@ function Setup({
               Play for third
             </FilterChip>
           </FilterGroup>
-          <FilterGroup label="Open round counts">
-            {FORMATS.map((f) => (
+          <FilterGroup label={`Open round counts · ${catalogInfo?.name ?? ''}`}>
+            {(catalogInfo?.formats ?? FORMATS).map((f) => (
               <FilterChip key={f.id} on={d.filters.formats.includes(f.id)} onClick={() => toggle('formats', f.id)}>
                 {f.label}
               </FilterChip>
             ))}
-            <span className="bg-foreground/10 mx-1 h-4 w-px" />
-            {RELEASES.map((r) => (
+            {catalogInfo?.releases !== false && <span className="bg-foreground/10 mx-1 h-4 w-px" />}
+            {(catalogInfo?.releases !== false ? RELEASES : []).map((r) => (
               <FilterChip key={r.id} on={d.filters.release.includes(r.id)} onClick={() => toggle('release', r.id)}>
                 {r.label}
               </FilterChip>

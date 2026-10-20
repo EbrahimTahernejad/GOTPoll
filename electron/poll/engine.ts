@@ -1,7 +1,17 @@
 import { EventEmitter } from 'node:events';
 import { Matcher } from '../matching/matcher.js';
 import { cleanMessage } from '../matching/normalize.js';
-import type { CatalogStore } from '../catalog/store.js';
+/** What the engine needs from a catalog (the selected one, in the app). */
+export type CatalogLike = {
+  all(): Show[];
+  info(): { file: string; hasRelease: boolean; name?: string; kind?: CatalogKind };
+  sequelAliases(): { title: string; rootId: number }[];
+  on(event: 'changed', cb: () => void): unknown;
+  /** a title from any catalog by id (past tournaments) */
+  lookup?(id: number): Show | undefined;
+  /** fetch posters for titles that don't have one yet */
+  wantCovers?(ids: number[]): void;
+};
 import type { UserStore } from '../user-store.js';
 import { sessionFor, type SourceDeps } from './sources/factory.js';
 import type { ChatMessage } from './sources/types.js';
@@ -71,7 +81,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
   private emitTimer: NodeJS.Timeout | null = null;
 
   constructor(
-    private catalog: CatalogStore,
+    private catalog: CatalogLike,
     private user: UserStore,
     /** main process passes the hidden-browser channel lookup */
     private deps: SourceDeps & {
@@ -130,7 +140,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     // Match against EVERY votable show and let the filters decide what
     // counts: a vote for a filtered-out show must not drift onto a
     // look-alike that happens to pass the filters.
-    const pool = [...this.catalog.all(), ...this.user.customShows()].filter((s) => s.eligible);
+    const pool = this.catalog.all().filter((s) => s.eligible);
     this.releaseKnown = this.catalog.info().hasRelease;
     this.shows = new Map(pool.map((s) => [s.id, s]));
     this.catalogVersionAtStart = this.catalog.info().file;
@@ -142,8 +152,10 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
 
     this.optionMatcher = null;
     if (this.mode === 'shortlist') {
+      // (may fall back to open below when none of the options are in this catalog)
       const options = this.shortlist.flatMap((id) => this.shows.get(id) ?? []);
-      this.shortlist = options.map((s) => s.id); // drop ids no longer in the catalog
+      this.shortlist = options.map((s) => s.id); // drop ids no longer in the catalog (or from another one)
+      if (!options.length) this.mode = 'open';
       const ids = new Set(this.shortlist);
       // with only a few candidates a looser threshold is safe: "frieren s2",
       // "chainsaw" or a typo should land on the option it obviously means
@@ -191,6 +203,11 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     this.supervisors.clear();
     this.status.clear();
     sups.forEach(({ sup }) => void sup.stop());
+  }
+
+  /** Push a fresh snapshot (e.g. posters just arrived for titles on the board). */
+  refresh() {
+    this.schedule();
   }
 
   /** The computer woke up / network came back: reconnect everything now. */
@@ -377,7 +394,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
 
   /** Streamer says: this phrase means that show. Recounts past voters too. */
   assign(phrase: string, showId: number) {
-    const show = this.shows.get(showId) ?? this.catalog.all().find((s) => s.id === showId);
+    const show = this.shows.get(showId) ?? this.catalog.all().find((s) => s.id === showId) ?? this.catalog.lookup?.(showId);
     if (!show) throw new Error(`Unknown show ${showId}`);
     this.user.teach(phrase, showId);
     this.dismissed.delete(phrase);
@@ -498,6 +515,10 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       ranking.sort((a, b) => b.count - a.count || b.popularity - a.popularity);
     }
 
+    // posters for what's on the board (movies & series fetch them as needed)
+    const noCover = ranking.slice(0, 60).filter((r) => !r.coverImage).map((r) => r.id);
+    if (noCover.length) this.catalog.wantCovers?.(noCover);
+
     const unmatched = [...this.buckets.entries()]
       .filter(([, b]) => b.showId === null)
       .sort((a, b) => b[1].voters.size - a[1].voters.size || b[1].lastAt - a[1].lastAt)
@@ -569,12 +590,15 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
         name: enabled.filter((o) => o.platform === c.platform).length > 1 ? channelName(c) : null,
       })),
       tournament: null,
+      catalog: { name: this.catalog.info().name ?? 'Anime', kind: this.catalog.info().kind ?? 'anilist' },
     };
   }
 
   /** Library lookup for whoever needs show details (the tournament). */
   show(id: number): Show | undefined {
-    return this.shows.get(id) ?? this.catalog.all().find((s) => s.id === id) ?? this.user.customShows().find((s) => s.id === id);
+    const s = this.shows.get(id) ?? this.catalog.all().find((x) => x.id === id) ?? this.catalog.lookup?.(id);
+    if (s && !s.coverImage) this.catalog.wantCovers?.([id]);
+    return s;
   }
 
   /** Coalesce bursts of chat into at most ~5 UI/websocket pushes a second. */

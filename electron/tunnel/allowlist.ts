@@ -17,6 +17,8 @@ export function isPublicRequest(method: string, rawUrl: string, dev = false): bo
   if (EXACT.has(path)) return true;
   // hashed build assets
   if (/^\/assets\/[\w.-]+\.(js|css|woff2?|png|svg|jpg|webp)$/.test(path)) return true;
+  // cover images of custom catalog entries (content-addressed file names)
+  if (/^\/media\/covers\/[a-f0-9]{40}\.(png|jpg|webp|gif)$/.test(path)) return true;
   // Dev builds (`pnpm dev`): Vite serves source modules from anywhere in the
   // project and node_modules/.pnpm, so allow reads – but still never the API.
   if (dev) return !path.startsWith('/api/');

@@ -1,7 +1,22 @@
 import { BrowserWindow, ipcMain, shell } from 'electron';
 import { describeChannel, testChannel } from './poll/sources/factory.js';
 import { shareInfo, startTunnel, stopTunnel, tunnel } from './sharing.js';
-import { ai, catalog, hardware, poll, prepareAi, probe, search, sourceDeps, tournament, user, warmUpRumble } from './services.js';
+import {
+  ai,
+  catalog,
+  hardware,
+  poll,
+  prepareAi,
+  probe,
+  saveCover,
+  search,
+  searchIn,
+  selectCatalog,
+  sourceDeps,
+  tournament,
+  user,
+  warmUpRumble,
+} from './services.js';
 
 const broadcast = (channel: string, payload: unknown) => {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send(channel, payload);
@@ -9,6 +24,8 @@ const broadcast = (channel: string, payload: unknown) => {
 
 catalog.on('status', (s) => broadcast('catalog:status', s));
 catalog.on('changed', (info) => broadcast('catalog:changed', info));
+catalog.on('list', (l) => broadcast('catalogs:list', l));
+catalog.on('covers', (c) => broadcast('catalogs:covers', c));
 poll.on('update', (s) => broadcast('poll:update', s));
 tournament.on('update', (s) => broadcast('tournament:update', s));
 ai.on('status', (s) => broadcast('ai:status', s));
@@ -35,7 +52,7 @@ ipcMain.handle('ai:prepare', () => prepareAi());
 
 // ---- catalog
 ipcMain.handle('catalog:info', () => catalog.info());
-ipcMain.handle('catalog:shows', () => [...catalog.all(), ...user.customShows()]);
+ipcMain.handle('catalog:shows', () => catalog.all());
 ipcMain.handle('catalog:status', () => catalog.status);
 ipcMain.handle('catalog:update', () => {
   // fire and forget – progress arrives via catalog:status events
@@ -45,6 +62,32 @@ ipcMain.handle('catalog:cancel', () => catalog.cancel());
 ipcMain.handle('catalog:revert', () => catalog.revert());
 ipcMain.handle('catalog:search', (_, query: string, limit?: number) => search(query, limit));
 ipcMain.handle('catalog:probe', (_, message: string) => probe(message));
+
+// ---- every catalog
+ipcMain.handle('catalogs:list', () => catalog.list());
+ipcMain.handle('catalogs:select', (_, id: string) => selectCatalog(id));
+ipcMain.handle('catalogs:update', (_, id: string) => {
+  // fire and forget – progress arrives via catalogs:list
+  void catalog.update(id).catch(() => {});
+});
+ipcMain.handle('catalogs:cancel', (_, id: string) => catalog.cancel(id));
+ipcMain.handle('catalogs:revert', (_, id: string) => catalog.revert(id));
+ipcMain.handle('catalogs:create', (_, name: string) => catalog.create(name));
+ipcMain.handle('catalogs:rename', (_, id: string, name: string) => catalog.custom(id).rename(name));
+ipcMain.handle('catalogs:remove', (_, id: string) => {
+  if (catalog.selectedId() === id && (poll.isRunning || tournament.snapshot().tournament)) {
+    throw new Error('It’s in use by a running poll or tournament');
+  }
+  catalog.remove(id);
+});
+ipcMain.handle('catalogs:labels', (_, id: string) => catalog.custom(id).labels());
+ipcMain.handle('catalogs:setLabels', (_, id: string, labels: Partial<Record<ShowFormat, string>>) => catalog.custom(id).setLabels(labels));
+ipcMain.handle('catalogs:entries', (_, id: string) => catalog.showsOf(id));
+ipcMain.handle('catalogs:addEntry', (_, id: string, e: CustomEntryInput) => catalog.custom(id).add(e));
+ipcMain.handle('catalogs:updateEntry', (_, id: string, showId: number, e: CustomEntryInput) => catalog.custom(id).update(showId, e));
+ipcMain.handle('catalogs:removeEntry', (_, id: string, showId: number) => catalog.custom(id).remove(showId));
+ipcMain.handle('catalogs:search', (_, id: string, query: string, limit?: number) => searchIn(id, query, limit));
+ipcMain.handle('catalogs:saveCover', (_, bytes: ArrayBuffer, type: string) => saveCover(bytes, type));
 
 // ---- poll
 // a plain poll can't take the engine away from an open tournament

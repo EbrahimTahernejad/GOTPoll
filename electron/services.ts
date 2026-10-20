@@ -1,8 +1,9 @@
 import { app } from 'electron';
-import { mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CatalogStore } from './catalog/store.js';
+import { Catalogs } from './catalog/catalogs.js';
 import { Matcher } from './matching/matcher.js';
 import { cleanMessage } from './matching/normalize.js';
 import { PollEngine } from './poll/engine.js';
@@ -17,20 +18,22 @@ const dirname = path.resolve(fileURLToPath(import.meta.url), '..');
 const userData = app.getPath('userData');
 mkdirSync(userData, { recursive: true });
 
-export const catalog = new CatalogStore(
-  path.join(userData, 'catalog'),
-  path.resolve(dirname, '../assets/shows.db')
-);
-catalog.init();
-
 export const user = new UserStore(userData);
+
+/** Every catalog; everything that says `catalog` works on the selected one. */
+export const catalog = new Catalogs(userData, path.resolve(dirname, '../assets/shows.db'), {
+  selected: () => user.settings().catalog,
+  setSelected: (id) => user.setSettings({ catalog: id }),
+  animeExtras: () => user.customShows(),
+});
+catalog.init();
 export const ai = new LocalAi(path.join(userData, 'ai'), {
   shows: () => [...getLibrary().values()],
   sequels: () => {
     const lib = getLibrary();
     return catalog.sequelAliases().filter((s) => lib.has(s.rootId));
   },
-  catalogKey: () => catalog.info().file.replace(/\W/g, ''),
+  catalogKey: () => `${catalog.info().id}-${catalog.info().file}`.replace(/\W/g, ''),
 });
 
 const showInfo = (id: number) => {
@@ -64,6 +67,28 @@ export const tournament = new TournamentController(poll, user);
 export function publicFeed(s?: PollSnapshot): PublicSnapshot {
   return { ...poll.publicSnapshot(s), tournament: tournament.publicView() };
 }
+
+/** Switch the catalog in use. Not mid-poll or mid-tournament: they hold its titles. */
+export function selectCatalog(id: string) {
+  if (poll.isRunning) throw new Error('End the running poll first');
+  if (tournament.snapshot().tournament) throw new Error('Close the open tournament first');
+  catalog.select(id);
+}
+
+/** Keep an uploaded cover image; served to the app and the viewer page at /media/covers/. */
+export const coversDir = path.join(userData, 'covers');
+export function saveCover(bytes: ArrayBuffer, type: string) {
+  const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }[type];
+  if (!ext) throw new Error('Use a PNG, JPEG, WebP or GIF image');
+  if (bytes.byteLength > 8 * 1024 * 1024) throw new Error('That image is too big (8 MB max)');
+  const buf = Buffer.from(bytes);
+  const name = `${createHash('sha1').update(buf).digest('hex')}.${ext}`;
+  mkdirSync(coversDir, { recursive: true });
+  writeFileSync(path.join(coversDir, name), buf);
+  return `/media/covers/${name}`;
+}
+
+catalog.on('covers', () => poll.refresh());
 
 /** Load (not download) whatever the selected strategy needs. */
 export async function resolvedLlm() {
@@ -100,16 +125,20 @@ export const sourceDeps = { rumbleCandidates: findRumbleCandidates };
 // the match tester. Built lazily and rebuilt when the catalog swaps.
 let searchMatcher: Matcher | null = null;
 let library: Map<number, Show> | null = null;
+let reindex: NodeJS.Timeout | null = null;
 catalog.on('changed', () => {
   searchMatcher = null;
   library = null;
+  // the AI index belongs to a catalog; a custom one changes entry by entry
+  if (reindex) clearTimeout(reindex);
+  reindex = setTimeout(() => void prepareAi(), 2500);
 });
+const otherSearch = new Map<string, { matcher: Matcher; lib: Map<number, Show> }>();
+catalog.on('list', () => otherSearch.clear());
 
 export function getLibrary() {
   if (!library) {
-    library = new Map(
-      [...catalog.all(), ...user.customShows()].filter((s) => s.eligible).map((s) => [s.id, s])
-    );
+    library = new Map(catalog.all().filter((s) => s.eligible).map((s) => [s.id, s]));
   }
   return library;
 }
@@ -129,12 +158,36 @@ function getSearchMatcher() {
 
 export function search(query: string, limit = 8): SearchHit[] {
   const lib = getLibrary();
-  return getSearchMatcher()
+  const hits = getSearchMatcher()
     .candidates(query, limit)
     .flatMap((c) => {
       const show = lib.get(c.showId);
       return show ? [{ show, score: c.score, alias: c.alias }] : [];
     });
+  catalog.wantCovers(hits.filter((h) => !h.show.coverImage).map((h) => h.show.id));
+  return hits;
+}
+
+/** Search any catalog, not just the one in use (copying titles into a custom catalog). */
+export function searchIn(id: string, query: string, limit = 10): SearchHit[] {
+  if (id === catalog.selectedId()) return search(query, limit);
+  if (!catalog.has(id)) throw new Error('Unknown catalog');
+  let entry = otherSearch.get(id);
+  if (!entry) {
+    const shows = catalog.showsOf(id).filter((s) => s.eligible);
+    entry = {
+      lib: new Map(shows.map((s) => [s.id, s])),
+      matcher: new Matcher({ shows, sequels: id === 'anime' ? catalog.anime.sequelAliases() : [] }),
+    };
+    otherSearch.set(id, entry);
+  }
+  const { lib, matcher } = entry;
+  const hits = matcher.candidates(query, limit).flatMap((c) => {
+    const show = lib.get(c.showId);
+    return show ? [{ show, score: c.score, alias: c.alias }] : [];
+  });
+  catalog.wantCovers(hits.filter((h) => !h.show.coverImage).map((h) => h.show.id));
+  return hits;
 }
 
 export async function probe(message: string): Promise<MatchProbe> {

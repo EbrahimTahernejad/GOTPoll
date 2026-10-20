@@ -12,7 +12,13 @@ import useLiveTime from '~/hooks/useLiveTime';
 // sized in vw so it looks identical at 720p, 1080p or 4K.
 // ?transparent=1 drops the backdrop for overlaying on top of a scene.
 
-const EXAMPLES = ['frieren', 'jjk', 'one piece', 'demon slayer', 'spy x family', 'chainsaw man'];
+const EXAMPLES: Record<CatalogKind, string[]> = {
+  anilist: ['frieren', 'jjk', 'one piece', 'demon slayer', 'spy x family', 'chainsaw man'],
+  imdb: ['breaking bad', 'interstellar', 'the office', 'dune', 'oppenheimer', 'severance'],
+  custom: [],
+};
+/** "Type an anime title …" – what one vote is, for the catalog in use */
+export const WHAT: Record<CatalogKind, string> = { anilist: 'an anime title', imdb: 'a movie or show', custom: 'a title' };
 
 export default function Public() {
   const { snap, connected } = useLiveRanking();
@@ -57,7 +63,7 @@ export default function Public() {
               ? 'Final results'
               : options
                 ? `Type ${options === 2 ? '1 or 2' : `a number 1–${options}`} (or the title) in chat to vote`
-                : 'Type an anime title in chat to vote'}
+                : `Type ${WHAT[snap?.catalog?.kind ?? 'anilist']} in chat to vote`}
           </span>
         </div>
         <div className="grow" />
@@ -91,7 +97,7 @@ export default function Public() {
                 transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
               />
               <div className="live-shine text-[3.4vw] font-black tracking-tight">The poll opens soon</div>
-              <Examples />
+              <Examples kind={snap.catalog?.kind ?? 'anilist'} />
             </motion.div>
           )}
 
@@ -117,7 +123,7 @@ export default function Public() {
                   >
                     Waiting for the first vote…
                   </motion.div>
-                  <Examples />
+                  <Examples kind={snap.catalog?.kind ?? 'anilist'} />
                 </div>
               )}
             </motion.div>
@@ -140,12 +146,15 @@ export default function Public() {
   );
 }
 
-function Examples() {
+function Examples({ kind }: { kind: CatalogKind }) {
+  const list = EXAMPLES[kind];
   const [i, setI] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setI((n) => (n + 1) % EXAMPLES.length), 1800);
+    if (!list.length) return;
+    const t = setInterval(() => setI((n) => (n + 1) % list.length), 1800);
     return () => clearInterval(t);
-  }, []);
+  }, [list]);
+  if (!list.length) return null;
   return (
     <div className="flex items-center gap-[0.6vw] text-[1.3vw] text-white/60">
       <span>e.g.</span>
@@ -158,7 +167,7 @@ function Examples() {
             exit={{ y: '-100%', opacity: 0 }}
             transition={{ type: 'spring', stiffness: 300, damping: 26 }}
           >
-            {EXAMPLES[i]}
+            {list[i % list.length]}
           </motion.span>
         </AnimatePresence>
       </span>

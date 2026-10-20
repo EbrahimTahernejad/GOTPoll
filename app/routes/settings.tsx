@@ -4,7 +4,9 @@ import { SharingSettings } from '~/components/share/share-panel';
 import AiSection from '~/components/settings/ai-section';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { CatalogCard, relativeTime } from '~/components/app/catalog-status';
+import { relativeTime } from '~/components/app/catalog-status';
+import CatalogsSection from '~/components/settings/catalogs-section';
+import useCatalog from '~/hooks/useCatalog';
 import { TitleBarContent } from '~/components/app/title-bar';
 import ChannelsSection from '~/components/channels/channels-section';
 import ShowsGrid from '~/components/settings/shows-grid';
@@ -22,7 +24,7 @@ const SECTIONS = [
   { id: 'ai', label: 'Local AI', icon: Sparkles, hint: 'Strategy, models, GPU' },
   { id: 'sharing', label: 'Sharing', icon: Globe, hint: 'Viewer page links, public link' },
   { id: 'voting', label: 'Voting rules', icon: Vote, hint: 'Who counts, how often' },
-  { id: 'catalog', label: 'Catalog', icon: Database, hint: 'AniList show list' },
+  { id: 'catalog', label: 'Catalogs', icon: Database, hint: 'Anime · movies & series · yours' },
   { id: 'shows', label: 'Library', icon: ListChecks, hint: 'All shows · hide from polls' },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]['id'];
@@ -30,6 +32,7 @@ type SectionId = (typeof SECTIONS)[number]['id'];
 export default function SettingsPage() {
   const navigate = useNavigate();
   const poll = usePoll();
+  const { info: catalogInfo } = useCatalog();
   const [section, setSection] = useState<SectionId>(() => {
     try {
       return (localStorage.getItem('settings-section') as SectionId) || 'channels';
@@ -127,14 +130,20 @@ export default function SettingsPage() {
             )}
             {section === 'voting' && <VotingSection running={poll.state === 'running'} />}
             {section === 'catalog' && (
-              <div className="max-w-3xl space-y-4">
-                <SectionTitle title="Show catalog" text="Every anime chat can vote for, from AniList." />
-                <CatalogCard pollRunning={poll.state === 'running'} />
+              <div className="max-w-5xl space-y-4">
+                <SectionTitle
+                  title="Catalogs"
+                  text="What chat votes from. Polls, matching and tournaments use the one in use – switch any time no poll or tournament is running."
+                />
+                <CatalogsSection locked={poll.state === 'running'} />
               </div>
             )}
             {section === 'shows' && (
               <div className="flex min-h-0 flex-1 flex-col gap-4">
-                <SectionTitle title="Library" text="Every show chat can vote for. Tick “Ignored” to keep one out of every poll." />
+                <SectionTitle
+                  title={`Library · ${catalogInfo?.name ?? ''}`}
+                  text="Every title chat can vote for in the catalog in use. Tick “Ignored” to keep one out of every poll."
+                />
                 <ShowsGrid />
               </div>
             )}

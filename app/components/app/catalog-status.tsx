@@ -4,16 +4,17 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { Button } from '~/components/ui/button';
 import useCatalog from '~/hooks/useCatalog';
+import useCatalogs from '~/hooks/useCatalogs';
 import { cn } from '~/lib/utils';
 
-function percent(s: CatalogStatus) {
+export function percent(s: CatalogStatus) {
   if (s.state === 'validating') return 97;
   if (s.state === 'applying' || s.state === 'done') return 100;
   if (s.state !== 'running' || !s.progress?.partitionsTotal) return 2;
   return Math.max(2, Math.min(95, (s.progress.partitionsDone / s.progress.partitionsTotal) * 95));
 }
 
-function useNow(active: boolean) {
+export function useNow(active: boolean) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!active) return;
@@ -33,14 +34,15 @@ export function relativeTime(ts: number) {
   return d === 1 ? 'yesterday' : `${d} days ago`;
 }
 
-function statusLine(s: CatalogStatus, now: number) {
+export function statusLine(s: CatalogStatus, now: number, source = 'AniList') {
   switch (s.state) {
     case 'running': {
       const p = s.progress;
-      if (!p) return 'Connecting to AniList…';
+      if (!p) return `Connecting to ${source}…`;
       if (p.phase === 'waiting' && p.waitUntil) {
-        return `AniList rate limit – resuming in ${Math.max(0, Math.ceil((p.waitUntil - now) / 1000))}s`;
+        return `${source} rate limit – resuming in ${Math.max(0, Math.ceil((p.waitUntil - now) / 1000))}s`;
       }
+      if (p.unit === 'MB') return `${p.label} · ${p.partitionsDone}/${p.partitionsTotal} MB · ${p.fetched.toLocaleString()} titles kept`;
       return `${p.label ? `${p.label} · ` : ''}${p.fetched.toLocaleString()} shows fetched`;
     }
     case 'validating':
@@ -48,7 +50,7 @@ function statusLine(s: CatalogStatus, now: number) {
     case 'applying':
       return 'Switching over…';
     case 'done':
-      return `Updated – ${s.total.toLocaleString()} shows (+${s.added} new${s.removed ? `, −${s.removed} removed` : ''})`;
+      return `Updated – ${s.total.toLocaleString()} titles (+${s.added.toLocaleString()} new${s.removed ? `, −${s.removed.toLocaleString()} removed` : ''})`;
     case 'error':
       return s.error ?? 'Update failed';
     case 'cancelled':
@@ -58,9 +60,12 @@ function statusLine(s: CatalogStatus, now: number) {
   }
 }
 
-/** Small title-bar indicator, visible while an update runs or just finished. */
+/** Small title-bar indicator, visible while any catalog updates or just finished. */
 export function CatalogPill() {
-  const { status, busy } = useCatalog();
+  const list = useCatalogs();
+  const working = list.find((c) => ['running', 'validating', 'applying'].includes(c.status.state)) ?? list.find((c) => ['done', 'error'].includes(c.status.state) && 'finishedAt' in c.status && Date.now() - c.status.finishedAt < 7000);
+  const status: CatalogStatus = working?.status ?? { state: 'idle' };
+  const busy = status.state === 'running' || status.state === 'validating' || status.state === 'applying';
   const now = useNow(busy);
   const [showDone, setShowDone] = useState(false);
   useEffect(() => {
@@ -85,7 +90,7 @@ export function CatalogPill() {
           <Link
             to="/settings"
             className="bg-background/70 hover:bg-background flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs backdrop-blur"
-            title={statusLine(status, now)}
+            title={statusLine(status, now, working?.kind === 'imdb' ? 'IMDb' : 'AniList')}
           >
             {busy ? (
               <svg viewBox="0 0 20 20" className="h-4 w-4 -rotate-90">
@@ -107,7 +112,9 @@ export function CatalogPill() {
             ) : (
               <AlertTriangle className="h-4 w-4 text-amber-500" />
             )}
-            <span>{busy ? `Updating catalog ${Math.round(pct)}%` : status.state === 'done' ? 'Catalog updated' : 'Update failed'}</span>
+            <span>
+              {busy ? `Updating ${working?.name ?? 'catalog'} ${Math.round(pct)}%` : status.state === 'done' ? `${working?.name ?? 'Catalog'} updated` : 'Update failed'}
+            </span>
           </Link>
         </motion.div>
       )}

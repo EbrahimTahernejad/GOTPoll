@@ -24,6 +24,26 @@ import {
   type ShowRow,
 } from './schema.js';
 
+/** Where a catalog's shows come from: fills a fresh database, row batches at a time. */
+export type CatalogSource = {
+  id: string;
+  fetch(opts: {
+    signal: AbortSignal;
+    fetchImpl?: typeof fetch;
+    fromYear?: number;
+    minGapMs?: number;
+    onBatch: (rows: ShowRow[]) => void;
+    onProgress: (p: SyncProgress) => void;
+  }): Promise<void>;
+};
+
+export const anilistSource: CatalogSource = {
+  id: 'anilist',
+  fetch: async ({ onBatch, ...opts }) => {
+    await fetchCatalog({ ...opts, onBatch: (media) => onBatch(media.map(mediaToRow).filter((r): r is ShowRow => r !== null)) });
+  },
+};
+
 // Catalog files live in <userData>/catalog:
 //
 //   current.json              { "file": "catalog-1760000000000.db", "previous": "..." }
@@ -37,6 +57,8 @@ import {
 
 export type CatalogInfo = {
   file: string;
+  /** false until a catalog without a bundled copy (movies & series) is first downloaded */
+  installed: boolean;
   /** false for catalogs synced before release status was stored */
   hasRelease: boolean;
   count: number;
@@ -74,9 +96,11 @@ export class CatalogStore extends EventEmitter<{
 
   constructor(
     private dir: string,
-    private seedPath: string,
+    /** a bundled copy to start from; null = nothing until the first update */
+    private seedPath: string | null,
     /** sanity floor for a fresh sync (tests use a tiny fake catalog) */
-    private minShows = 1000
+    private minShows = 1000,
+    private source: CatalogSource = anilistSource
   ) {
     super();
   }
@@ -99,7 +123,7 @@ export class CatalogStore extends EventEmitter<{
       const good = candidates.find((f) => this.tryOpen(f));
       if (good) {
         this.writePointer({ file: good, previous: null });
-      } else {
+      } else if (this.seedPath) {
         this.installSeed();
       }
     }
@@ -109,6 +133,9 @@ export class CatalogStore extends EventEmitter<{
   // ------------------------------------------------------------ reading
 
   info(): CatalogInfo {
+    if (!this.db) {
+      return { file: '', installed: false, hasRelease: true, count: 0, eligible: 0, syncedAt: 0, source: 'none', canRevert: false };
+    }
     const db = this.handle();
     const meta = getMeta(db);
     const count = (db.prepare('SELECT COUNT(*) AS n FROM shows').get() as { n: number }).n;
@@ -116,6 +143,7 @@ export class CatalogStore extends EventEmitter<{
     const hasRelease = (db.prepare("SELECT 1 FROM pragma_table_info('shows') WHERE name = 'status'").get() ?? null) !== null;
     return {
       file: this.pointer!.file,
+      installed: true,
       hasRelease,
       count,
       eligible: this.all().filter((s) => s.eligible).length,
@@ -128,6 +156,7 @@ export class CatalogStore extends EventEmitter<{
   /** Every show, with `eligible` = can be voted for (franchise root). */
   all(): Show[] {
     if (this.cache) return this.cache;
+    if (!this.db) return [];
     const rows = this.handle().prepare('SELECT * FROM shows').all() as ShowRow[];
     const ids = new Set(rows.map((r) => r.id));
     this.cache = rows.map((r) => ({
@@ -196,14 +225,12 @@ export class CatalogStore extends EventEmitter<{
       staging.exec(CATALOG_SQL);
       const upsert = prepareUpsert(staging);
 
-      await fetchCatalog({
+      await this.source.fetch({
         signal: abort.signal,
         fetchImpl: opts.fetchImpl,
         fromYear: opts.fromYear,
         minGapMs: opts.minGapMs,
-        onBatch: (media) => {
-          upsert(media.map(mediaToRow).filter((r): r is ShowRow => r !== null));
-        },
+        onBatch: (rows) => upsert(rows),
         onProgress: (p) => {
           progress = p;
           this.setStatus({ state: 'running', startedAt, progress });
@@ -230,7 +257,7 @@ export class CatalogStore extends EventEmitter<{
       let removed = 0;
       for (const id of oldIds) if (!newIds.has(id)) removed++;
 
-      setMeta(staging, { schema: SCHEMA_VERSION, source: 'anilist', synced_at: Date.now() });
+      setMeta(staging, { schema: SCHEMA_VERSION, source: this.source.id, synced_at: Date.now() });
       staging.close();
       staging = null;
 
@@ -302,7 +329,7 @@ export class CatalogStore extends EventEmitter<{
   private installSeed() {
     const file = `catalog-${Date.now()}.db`;
     const tmp = path.join(this.dir, `${file}.tmp`);
-    copyFileSync(this.seedPath, tmp);
+    copyFileSync(this.seedPath!, tmp);
     // seeds shipped by got-poll v1 use the old single-table layout
     const db = new Database(tmp);
     migrateLegacy(db);

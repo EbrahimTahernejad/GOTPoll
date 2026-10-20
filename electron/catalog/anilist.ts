@@ -41,6 +41,8 @@ export type SyncProgress = {
   partitionsTotal: number;
   waitUntil: number | null;
   label: string;
+  /** what partitions count: AniList year ranges, or megabytes of a download */
+  unit?: 'ranges' | 'MB';
 };
 
 const API_URL = 'https://graphql.anilist.co';

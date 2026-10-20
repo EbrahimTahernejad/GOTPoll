@@ -1,4 +1,5 @@
-import type { CatalogInfo, UpdateStatus } from './catalog/store';
+import type { SelectedCatalogInfo } from './catalog/catalogs';
+import type { UpdateStatus } from './catalog/store';
 
 declare global {
   type ShowFormat = 'TV' | 'TV_SHORT' | 'MOVIE';
@@ -25,6 +26,41 @@ declare global {
     /** null when the catalog predates release status (update it) */
     release: ShowRelease | null;
     custom?: boolean;
+  };
+
+  // ------------------------------------------------------------ catalogs
+  //   anilist  the anime catalog (AniList)
+  //   imdb     movies & series (IMDb's free datasets)
+  //   custom   built by the streamer in the app – any number of them
+  type CatalogKind = 'anilist' | 'imdb' | 'custom';
+
+  /** One of the three format slots, as a catalog names it (TV / Movie / Short, Movie / Series / Mini-series, …). */
+  type FormatLabel = { id: ShowFormat; label: string };
+
+  type CatalogSummary = {
+    id: string;
+    name: string;
+    kind: CatalogKind;
+    /** movies & series exist only after their first download */
+    installed: boolean;
+    count: number;
+    eligible: number;
+    syncedAt: number;
+    canRevert: boolean;
+    selected: boolean;
+    status: CatalogStatus;
+  };
+
+  /** A custom catalog entry, as typed in the app. */
+  type CustomEntryInput = {
+    title: string;
+    /** other names chat might use */
+    altTitles: string[];
+    year: number | null;
+    format: ShowFormat;
+    /** a link, or an image saved with catalogs.saveCover */
+    cover: string | null;
+    release: ShowRelease | null;
   };
 
   /** option = its number in a shortlist poll (1-based) */
@@ -127,6 +163,8 @@ declare global {
     channels: PublicChannel[];
     /** an open tournament takes over the viewer page */
     tournament: PublicTournament | null;
+    /** what chat is voting from – sets the wording ("anime", "movie or show", …) */
+    catalog: { name: string; kind: CatalogKind };
   };
 
   // ------------------------------------------------------------ tournament
@@ -424,6 +462,8 @@ declare global {
     llmModel: 'auto' | 'qwen-1.5b' | 'qwen-3b' | 'qwen-7b';
     /** one vote per viewer – a new vote replaces their previous one */
     onePerViewer: boolean;
+    /** the catalog in use: 'anime', 'screen' or 'custom-N' */
+    catalog: string;
   };
 
   type LearnedAlias = { phrase: string; showId: number; createdAt: number };
@@ -445,7 +485,7 @@ declare global {
   };
 
   type CatalogStatus = UpdateStatus;
-  type CatalogMeta = CatalogInfo;
+  type CatalogMeta = SelectedCatalogInfo;
 
   interface Window {
     GOTPoll: {
@@ -465,6 +505,30 @@ declare global {
         probe: (message: string) => Promise<MatchProbe>;
         onStatus: (cb: (s: CatalogStatus) => void) => () => void;
         onChanged: (cb: (info: CatalogMeta) => void) => () => void;
+      };
+      catalogs: {
+        list: () => Promise<CatalogSummary[]>;
+        /** switch the catalog in use (not while a poll or tournament runs) */
+        select: (id: string) => Promise<void>;
+        update: (id: string) => Promise<void>;
+        cancel: (id: string) => Promise<void>;
+        revert: (id: string) => Promise<boolean>;
+        create: (name: string) => Promise<string>;
+        rename: (id: string, name: string) => Promise<void>;
+        remove: (id: string) => Promise<void>;
+        labels: (id: string) => Promise<Record<ShowFormat, string>>;
+        setLabels: (id: string, labels: Partial<Record<ShowFormat, string>>) => Promise<void>;
+        entries: (id: string) => Promise<Show[]>;
+        addEntry: (id: string, entry: CustomEntryInput) => Promise<Show>;
+        updateEntry: (id: string, showId: number, entry: CustomEntryInput) => Promise<void>;
+        removeEntry: (id: string, showId: number) => Promise<void>;
+        /** search any catalog (to copy titles into a custom one) */
+        search: (id: string, query: string, limit?: number) => Promise<SearchHit[]>;
+        /** keep an image file for a cover; returns its URL */
+        saveCover: (bytes: ArrayBuffer, type: string) => Promise<string>;
+        onList: (cb: (list: CatalogSummary[]) => void) => () => void;
+        /** posters found for titles (movies & series) */
+        onCovers: (cb: (batch: { id: number; url: string }[]) => void) => () => void;
       };
       poll: {
         start: (config: PollConfig) => Promise<void>;

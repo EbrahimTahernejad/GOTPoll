@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import getFreePort from 'get-port';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { poll, publicFeed, tournament, user } from './services.js';
+import { catalog, coversDir, poll, publicFeed, tournament, user } from './services.js';
 import { isPublicRequest, isPublicUpgrade } from './tunnel/allowlist.js';
 
 // Viewer page server (OBS browser source / second screen).
@@ -23,6 +23,10 @@ export const port = await getFreePort({ port: [4747, 4748, 4749] });
 app.get('/api/counts', (_req: Request, res: Response) => {
   res.json(publicFeed());
 });
+
+// cover images added to custom catalogs (content-addressed, so cache forever)
+const media = express.static(coversDir, { immutable: true, maxAge: '365d', fallthrough: false });
+app.use('/media/covers', media);
 
 // Dev only: drive a poll with fake chat to see the viewer page move.
 //   /api/dev/sim?rate=8   start (or speed up) a simulated chat, msgs/sec
@@ -74,6 +78,8 @@ if (isDev) {
       return;
     }
     if (section) await win.webContents.executeJavaScript(`localStorage.setItem('settings-section', ${JSON.stringify(section)})`);
+    const editing = String(req.query.editing ?? '');
+    if (/^custom-\d+$/.test(editing)) await win.webContents.executeJavaScript(`localStorage.setItem('catalogs-editing', ${JSON.stringify(editing)})`);
     if (route) {
       const base = new URL(win.webContents.getURL()).origin;
       await win.loadURL(`${base}${route}${hash}`);
@@ -120,6 +126,28 @@ if (isDev) {
       setTimeout(() => poll.ingest({ platform, userId, text }), lines.length > 1 ? (over * i) / (lines.length - 1) : 0);
     });
     res.json({ queued: lines.length });
+  });
+
+  // Dev only: drive catalogs without clicking.
+  //   /api/dev/catalogs?a={"type":"create","name":"Games"}
+  app.get('/api/dev/catalogs', async (req: Request, res: Response) => {
+    if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '')) {
+      res.status(403).end();
+      return;
+    }
+    try {
+      const a = req.query.a ? JSON.parse(String(req.query.a)) : { type: 'list' };
+      let out: unknown;
+      if (a.type === 'create') out = catalog.create(a.name);
+      else if (a.type === 'add') out = catalog.custom(a.id).add(a.entry);
+      else if (a.type === 'labels') out = catalog.custom(a.id).setLabels(a.labels);
+      else if (a.type === 'select') out = catalog.select(a.id);
+      else if (a.type === 'update') void catalog.update(a.id).catch(() => {});
+      else if (a.type === 'remove') out = catalog.remove(a.id);
+      res.json({ out: out ?? null, list: catalog.list().map((c) => ({ id: c.id, name: c.name, count: c.count, selected: c.selected, installed: c.installed, status: c.status })) });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   let timer: NodeJS.Timeout | null = null;
@@ -191,6 +219,8 @@ function push(s?: PollSnapshot) {
 }
 poll.on('update', (s) => push(s));
 tournament.on('update', () => push());
+catalog.on('covers', () => push());
+catalog.on('changed', () => push());
 
 // drop clients that vanished without closing (sleeping laptops, OBS reloads)
 setInterval(() => {
@@ -234,6 +264,7 @@ pub.use((req, res, next) => {
 pub.get('/api/counts', (_req: Request, res: Response) => {
   res.json(publicFeed());
 });
+pub.use('/media/covers', media);
 if (viteProxy) {
   pub.use('/', viteProxy);
 } else {

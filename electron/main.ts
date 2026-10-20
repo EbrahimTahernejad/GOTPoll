@@ -152,7 +152,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   poll.stop();
-  catalog.cancel(); // the partial file is discarded; the live catalog is untouched
+  catalog.cancelAll(); // partial files are discarded; live catalogs are untouched
   void stopTunnel(); // close the public link (and the cloudflared process)
 });
 

@@ -19,6 +19,9 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog';
 import useLiveTime from '~/hooks/useLiveTime';
+import useCatalog from '~/hooks/useCatalog';
+import useCatalogs from '~/hooks/useCatalogs';
+import useLibrary from '~/hooks/useLibrary';
 import usePoll from '~/hooks/usePoll';
 import { cn } from '~/lib/utils';
 
@@ -40,14 +43,15 @@ export default function Home() {
   const [filters, setFilters] = useState<PollFilters | null>(null);
   const [mode, setMode] = useState<PollMode>('open');
   const [shortlist, setShortlist] = useState<number[]>([]);
-  const [library, setLibrary] = useState<Map<number, Show>>(new Map());
+  const library = useLibrary();
+  const catalogs = useCatalogs();
+  const { info: catalogInfo } = useCatalog();
   useEffect(() => {
     window.GOTPoll.settings.get().then((s) => {
       setFilters(s.pollFilters);
       setMode(s.pollMode);
       setShortlist(s.pollShortlist);
     });
-    window.GOTPoll.catalog.shows().then((list) => setLibrary(new Map(list.map((x) => [x.id, x]))));
   }, []);
   // remember edits right away, not only when a poll starts
   const saveShortlist = (ids: number[]) => {
@@ -58,7 +62,9 @@ export default function Home() {
     setMode(m);
     void window.GOTPoll.settings.set({ pollMode: m });
   };
-  const shortlistTooShort = mode === 'shortlist' && shortlist.length < 2;
+  // options saved for another catalog don't belong in this one
+  const options = library.size ? shortlist.filter((id) => library.has(id)) : shortlist;
+  const shortlistTooShort = mode === 'shortlist' && options.length < 2;
   const [busy, setBusy] = useState(false);
   const [assigning, setAssigning] = useState<{ phrase: PollPhrase; current: number | null } | null>(null);
   const [inspecting, setInspecting] = useState<RankedShow | null>(null);
@@ -66,6 +72,10 @@ export default function Home() {
   const [preview, setPreview] = useState<RankedShow | null>(null);
 
   const running = snap.state === 'running';
+  // while live, show what the poll really runs (a shortlist with none of its
+  // options in this catalog runs as an open poll)
+  const shownMode = running ? snap.mode : mode;
+  const formatLabel = (f: ShowFormat) => catalogInfo?.formats.find((x) => x.id === f)?.label ?? f;
   const [tournamentOpen, setTournamentOpen] = useState(false);
   useEffect(() => {
     window.GOTPoll.tournament.snapshot().then((t) => setTournamentOpen(!!t.tournament));
@@ -137,7 +147,7 @@ export default function Home() {
                   <Button
                     disabled={busy || !filters || shortlistTooShort}
                     title={shortlistTooShort ? 'Add at least two options' : undefined}
-                    onClick={() => filters && act(() => window.GOTPoll.poll.start({ mode, filters, shortlist }))}
+                    onClick={() => filters && act(() => window.GOTPoll.poll.start({ mode, filters, shortlist: options }))}
                   >
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-current" />}
                     {snap.state === 'ended' ? 'New poll' : 'Start poll'}
@@ -148,12 +158,27 @@ export default function Home() {
 
             {filters && (
               <div className="flex flex-wrap items-start gap-x-8 gap-y-3 border-t px-4 py-3">
+                <FilterGroup label="Catalog">
+                  {catalogs
+                    .filter((c) => c.installed && (c.kind !== 'custom' || c.count > 0))
+                    .map((c) => (
+                      <FilterChip
+                        key={c.id}
+                        on={c.selected}
+                        disabled={running || tournamentOpen}
+                        title={running || tournamentOpen ? 'Switch catalogs between polls' : `Vote from ${c.name}`}
+                        onClick={() => !c.selected && window.GOTPoll.catalogs.select(c.id).catch(() => {})}
+                      >
+                        {c.name}
+                      </FilterChip>
+                    ))}
+                </FilterGroup>
                 <FilterGroup label="Poll">
-                  <FilterChip on={mode === 'open'} disabled={running} onClick={() => chooseMode('open')} title="Any show in the library">
+                  <FilterChip on={shownMode === 'open'} disabled={running} onClick={() => chooseMode('open')} title="Any show in the library">
                     Open
                   </FilterChip>
                   <FilterChip
-                    on={mode === 'shortlist'}
+                    on={shownMode === 'shortlist'}
                     disabled={running}
                     onClick={() => chooseMode('shortlist')}
                     title="Only shows you pick – chat can vote by number"
@@ -161,16 +186,16 @@ export default function Home() {
                     Shortlist
                   </FilterChip>
                 </FilterGroup>
-                {mode === 'shortlist' ? (
+                {shownMode === 'shortlist' ? (
                   <div className="min-w-0 basis-full">
-                    <FilterGroup label={`Options · ${shortlist.length}`}>
-                      <ShortlistEditor ids={shortlist} shows={library} disabled={running} onChange={saveShortlist} />
+                    <FilterGroup label={`Options · ${options.length}`}>
+                      <ShortlistEditor ids={options} shows={library} disabled={running} onChange={saveShortlist} />
                     </FilterGroup>
                   </div>
                 ) : (
                 <>
                 <FilterGroup label="Format">
-                  {FORMATS.map((f) => (
+                  {(catalogInfo?.formats ?? FORMATS).map((f) => (
                     <FilterChip
                       key={f.id}
                       on={filters.formats.includes(f.id)}
@@ -181,6 +206,7 @@ export default function Home() {
                     </FilterChip>
                   ))}
                 </FilterGroup>
+                {catalogInfo?.releases !== false && (
                 <FilterGroup
                   label="Release"
                   note={
@@ -203,6 +229,7 @@ export default function Home() {
                     </FilterChip>
                   ))}
                 </FilterGroup>
+                )}
                 </>
                 )}
                 <FilterGroup label="Chat">
@@ -296,7 +323,7 @@ export default function Home() {
                           </div>
                         </div>
                         <Badge variant="outline" className="relative text-[10px]">
-                          {s.format}
+                          {formatLabel(s.format)}
                         </Badge>
                         <span className="relative w-12 text-right text-base font-bold tabular-nums">{s.count}</span>
                         <div className="relative flex opacity-0 transition-opacity group-hover:opacity-100">
