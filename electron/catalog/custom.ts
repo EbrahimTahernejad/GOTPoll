@@ -15,7 +15,8 @@ import type { CatalogInfo } from './store.js';
 export const CUSTOM_ID_BASE = 2_000_000_000;
 const PER_CATALOG = 100_000;
 
-export const customNumberOf = (id: number) => (id >= CUSTOM_ID_BASE ? Math.floor((id - CUSTOM_ID_BASE) / PER_CATALOG) : -1);
+export const isCustomId = (id: number) => id >= CUSTOM_ID_BASE && id < CUSTOM_ID_BASE + 1_000_000_000;
+export const customNumberOf = (id: number) => (isCustomId(id) ? Math.floor((id - CUSTOM_ID_BASE) / PER_CATALOG) : -1);
 
 const RELEASE_STATUS: Record<ShowRelease, string> = { released: 'FINISHED', airing: 'RELEASING', upcoming: 'NOT_YET_RELEASED' };
 

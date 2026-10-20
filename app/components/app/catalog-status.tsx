@@ -90,7 +90,7 @@ export function CatalogPill() {
           <Link
             to="/settings"
             className="bg-background/70 hover:bg-background flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs backdrop-blur"
-            title={statusLine(status, now, working?.kind === 'imdb' ? 'IMDb' : 'AniList')}
+            title={statusLine(status, now, working?.kind === 'imdb' ? 'IMDb' : working?.kind === 'games' ? 'Wikidata' : 'AniList')}
           >
             {busy ? (
               <svg viewBox="0 0 20 20" className="h-4 w-4 -rotate-90">

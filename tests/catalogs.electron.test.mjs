@@ -121,3 +121,53 @@ test('movies & series: nothing until imported, then votes-filtered titles with t
   assert.equal(tconstOf(IMDB_ID_BASE + 111161), 'tt0111161');
   assert.equal(imdbSource.id, 'imdb');
 });
+
+test('games: sliced Wikidata import, names, Steam covers, other names in batches', async () => {
+  const { GAME_ID_BASE } = await import('../build/electron/catalog/games.js');
+  const dir = tmp();
+  const c = catalogs(dir);
+  assert.equal(c.list().find((x) => x.id === 'games').installed, false);
+  // 3000 fake games spread over the popularity slices; a few edge cases
+  const games = Array.from({ length: 3000 }, (_, i) => ({
+    q: 1000 + i,
+    label: i === 0 ? 'Elden Ring' : i === 1 ? 'Q1001' : i === 2 ? 'ゼルダの伝説' : `Game ${i}`,
+    sl: 8 + (i % 40),
+    date: i === 3 ? `${YEAR + 1}-01-01T00:00:00Z` : '2017-02-24T00:00:00Z',
+    steam: i % 2 === 0 ? String(10 + i) : null,
+  }));
+  let aliasCalls = 0;
+  const fetchImpl = async (_url, init) => {
+    const q = new URLSearchParams(init.body).get('query');
+    let bindings;
+    if (q.includes('skos:altLabel')) {
+      aliasCalls++;
+      const ids = [...q.matchAll(/wd:Q(\d+)/g)].map((m) => Number(m[1]));
+      bindings = ids.filter((id) => id === 1000).map((id) => ({ item: { value: `http://www.wikidata.org/entity/Q${id}` }, alts: { value: 'ER|Elden|エルデンリング' } }));
+    } else {
+      const [lo, hi] = /\?sl >= (\d+) && \?sl <= (\d+)/.exec(q).slice(1).map(Number);
+      bindings = games
+        .filter((g) => g.sl >= lo && g.sl <= hi)
+        .map((g) => ({
+          item: { value: `http://www.wikidata.org/entity/Q${g.q}` },
+          itemLabel: { value: g.label },
+          sl: { value: String(g.sl) },
+          d: { value: g.date },
+          ...(g.steam ? { s: { value: g.steam } } : {}),
+        }));
+    }
+    return new Response(JSON.stringify({ results: { bindings } }), { headers: { 'content-type': 'application/json' } });
+  };
+  await c.games.update({ fetchImpl });
+  assert.equal(c.games.status.state, 'done', JSON.stringify(c.games.status));
+  c.select('games');
+  const byId = new Map(c.all().map((s) => [s.id, s]));
+  assert.equal(byId.size, 2998); // a Q-id label and a non-Latin one are dropped
+  const er = byId.get(GAME_ID_BASE + 1000);
+  assert.equal(er.titleRomaji, 'Elden Ring');
+  assert.deepEqual(er.synonyms, ['ER', 'Elden']);
+  assert.match(er.coverImage, /steam\/apps\/10\/library_600x900\.jpg$/);
+  assert.equal(byId.get(GAME_ID_BASE + 1003).release, 'upcoming');
+  assert.equal(aliasCalls, 10); // 2998 games, 300 per request
+  assert.deepEqual(c.info().formats, [{ id: 'TV', label: 'Game' }]);
+  assert.equal(c.lookup(GAME_ID_BASE + 1000).titleRomaji, 'Elden Ring');
+});

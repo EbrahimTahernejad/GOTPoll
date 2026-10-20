@@ -70,6 +70,12 @@ export type MatchResult = {
 export type MatcherOptions = {
   threshold?: number;
   margin?: number;
+  /**
+   * A 1–2 word message naming a title less popular than this is taken as
+   * chatter. In the catalog's own popularity units (AniList users, IMDb
+   * votes, Wikipedias…); 0 turns the guard off.
+   */
+  minPopularityShort?: number;
 };
 
 export type MatcherInput = MatcherOptions & {
@@ -83,6 +89,7 @@ export type MatcherInput = MatcherOptions & {
 const DEFAULTS: Required<MatcherOptions> = {
   threshold: 0.72,
   margin: 0.03,
+  minPopularityShort: 5000,
 };
 
 // Twitch/YouTube chatter that happens to be (part of) some obscure title.
@@ -97,8 +104,6 @@ const CHAT_STOPLIST = new Set(
   ).split(' ')
 );
 
-// AniList "popularity" = users with the show on their list.
-const MIN_POPULARITY_SHORT = 5000;
 
 const OWNING = new Set<AliasKind>(['title', 'synonym', 'learned', 'sequel']);
 
@@ -346,7 +351,7 @@ export class Matcher {
 
   /** The same "obscure show from a 1–2 word message" floor match() applies. */
   passesPopularityFloor(query: string, showId: number): boolean {
-    return query.split(' ').length > 2 || (this.popularity.get(showId) ?? 0) >= MIN_POPULARITY_SHORT;
+    return query.split(' ').length > 2 || (this.popularity.get(showId) ?? 0) >= this.opts.minPopularityShort;
   }
 
   popularityOf(showId: number) {
@@ -363,7 +368,7 @@ export class Matcher {
       hit &&
       hit.stage !== 'learned' &&
       query.split(' ').length <= 2 &&
-      (this.popularity.get(hit.showId) ?? 0) < MIN_POPULARITY_SHORT
+      (this.popularity.get(hit.showId) ?? 0) < this.opts.minPopularityShort
     ) {
       return null;
     }

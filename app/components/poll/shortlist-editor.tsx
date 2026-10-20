@@ -96,7 +96,7 @@ export default function ShortlistEditor({
                   </span>
                 )}
                 {s?.coverImage ? (
-                  <img src={s.coverImage} alt="" draggable={false} className="h-9 w-7 shrink-0 rounded object-cover" />
+                  <img src={s.coverImage} alt="" draggable={false} onError={(e) => (e.currentTarget.style.visibility = 'hidden')} className="bg-muted h-9 w-7 shrink-0 rounded object-cover" />
                 ) : (
                   <div className="bg-muted h-9 w-7 shrink-0 rounded" />
                 )}

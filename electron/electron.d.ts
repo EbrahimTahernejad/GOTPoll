@@ -31,8 +31,9 @@ declare global {
   // ------------------------------------------------------------ catalogs
   //   anilist  the anime catalog (AniList)
   //   imdb     movies & series (IMDb's free datasets)
+  //   games    video games (Wikidata)
   //   custom   built by the streamer in the app – any number of them
-  type CatalogKind = 'anilist' | 'imdb' | 'custom';
+  type CatalogKind = 'anilist' | 'imdb' | 'games' | 'custom';
 
   /** One of the three format slots, as a catalog names it (TV / Movie / Short, Movie / Series / Mini-series, …). */
   type FormatLabel = { id: ShowFormat; label: string };
@@ -462,7 +463,7 @@ declare global {
     llmModel: 'auto' | 'qwen-1.5b' | 'qwen-3b' | 'qwen-7b';
     /** one vote per viewer – a new vote replaces their previous one */
     onePerViewer: boolean;
-    /** the catalog in use: 'anime', 'screen' or 'custom-N' */
+    /** the catalog in use: 'anime', 'screen', 'games' or 'custom-N' */
     catalog: string;
   };
 

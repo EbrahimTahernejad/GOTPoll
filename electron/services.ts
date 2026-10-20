@@ -147,6 +147,7 @@ function getSearchMatcher() {
   if (!searchMatcher) {
     const lib = getLibrary();
     searchMatcher = new Matcher({
+      minPopularityShort: catalog.info().popularityFloor,
       shows: [...lib.values()],
       sequels: catalog.sequelAliases().filter((s) => lib.has(s.rootId)),
     });
@@ -177,7 +178,7 @@ export function searchIn(id: string, query: string, limit = 10): SearchHit[] {
     const shows = catalog.showsOf(id).filter((s) => s.eligible);
     entry = {
       lib: new Map(shows.map((s) => [s.id, s])),
-      matcher: new Matcher({ shows, sequels: id === 'anime' ? catalog.anime.sequelAliases() : [] }),
+      matcher: new Matcher({ shows, sequels: id === 'anime' ? catalog.anime.sequelAliases() : [], minPopularityShort: catalog.floorOf(id) }),
     };
     otherSearch.set(id, entry);
   }

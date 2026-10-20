@@ -4,7 +4,7 @@ import { cleanMessage } from '../matching/normalize.js';
 /** What the engine needs from a catalog (the selected one, in the app). */
 export type CatalogLike = {
   all(): Show[];
-  info(): { file: string; hasRelease: boolean; name?: string; kind?: CatalogKind };
+  info(): { file: string; hasRelease: boolean; name?: string; kind?: CatalogKind; popularityFloor?: number };
   sequelAliases(): { title: string; rootId: number }[];
   on(event: 'changed', cb: () => void): unknown;
   /** a title from any catalog by id (past tournaments) */
@@ -145,6 +145,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     this.shows = new Map(pool.map((s) => [s.id, s]));
     this.catalogVersionAtStart = this.catalog.info().file;
     this.matcher = new Matcher({
+      minPopularityShort: this.catalog.info().popularityFloor,
       shows: pool,
       sequels: this.catalog.sequelAliases().filter((s) => this.shows.has(s.rootId)),
       learned: this.user.aliases().filter((a) => this.shows.has(a.showId)).map((a) => ({ alias: a.phrase, showId: a.showId })),
@@ -160,6 +161,8 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       // with only a few candidates a looser threshold is safe: "frieren s2",
       // "chainsaw" or a typo should land on the option it obviously means
       this.optionMatcher = new Matcher({
+        // the streamer picked these: none of them is "obscure chatter"
+        minPopularityShort: 0,
         shows: options,
         sequels: this.catalog.sequelAliases().filter((s) => ids.has(s.rootId)),
         threshold: 0.6,

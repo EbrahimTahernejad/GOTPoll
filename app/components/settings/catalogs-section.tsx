@@ -6,6 +6,7 @@ import {
   Clapperboard,
   CloudDownload,
   Copy,
+  Gamepad2,
   History,
   ImageUp,
   Library,
@@ -29,7 +30,9 @@ import { cn } from '~/lib/utils';
 // Settings → Catalogs: what chat votes from. The anime catalog (AniList),
 // movies & series (IMDb), and any number of custom catalogs built here.
 
-const KIND_ICON = { anilist: Sparkles, imdb: Clapperboard, custom: Library } as const;
+const KIND_ICON = { anilist: Sparkles, imdb: Clapperboard, games: Gamepad2, custom: Library } as const;
+const SOURCE = { anilist: 'AniList', imdb: 'IMDb', games: 'Wikidata', custom: '' } as const;
+const SIZE = { anilist: '', imdb: ' (~240 MB)', games: ' (about a minute)', custom: '' } as const;
 const BUSY = ['running', 'validating', 'applying'];
 
 /** Run an IPC call; Electron wraps thrown messages, unwrap them for people. */
@@ -142,7 +145,7 @@ function CatalogCard({
   const busy = BUSY.includes(c.status.state);
   const now = useNow(busy);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const source = c.kind === 'imdb' ? 'IMDb' : 'AniList';
+  const source = SOURCE[c.kind];
   const showProgress = busy || ((c.status.state === 'error' || c.status.state === 'done') && c.kind !== 'custom');
   const meta =
     c.kind === 'custom'
@@ -155,7 +158,9 @@ function CatalogCard({
       ? 'Every anime from AniList; sequels count as their first season.'
       : c.kind === 'imdb'
         ? 'Movies, series and mini-series from IMDb’s free data – the ones with at least 2,500 votes.'
-        : 'Your own list, edited here.';
+        : c.kind === 'games'
+          ? 'Video games from Wikidata – the ones with articles in 8+ Wikipedias. Covers from Steam where there is one.'
+          : 'Your own list, edited here.';
 
   return (
     <div className={cn('bg-card/60 relative overflow-hidden rounded-xl border p-4 transition-shadow', c.selected && 'border-foreground/40 shadow-md', editing && 'ring-foreground/20 ring-2')}>
@@ -215,7 +220,7 @@ function CatalogCard({
           ) : (
             <Button size="sm" variant="outline" onClick={() => attempt(() => window.GOTPoll.catalogs.update(c.id), onError)}>
               <CloudDownload className="h-3.5 w-3.5" />
-              {c.installed ? `Update from ${source}` : `Download from ${source} (~240 MB)`}
+              {c.installed ? `Update from ${source}` : `Download from ${source}${SIZE[c.kind]}`}
             </Button>
           ))}
         {c.kind !== 'custom' && c.canRevert && !busy && (
@@ -728,7 +733,7 @@ function NameDialog({
 
 function Thumb({ src, className }: { src: string | null; className?: string }) {
   return src ? (
-    <img src={src} alt="" className={cn('shrink-0 rounded object-cover', className)} />
+    <img src={src} alt="" onError={(e) => (e.currentTarget.style.visibility = 'hidden')} className={cn('bg-muted shrink-0 rounded object-cover', className)} />
   ) : (
     <div className={cn('bg-muted shrink-0 rounded', className)} />
   );

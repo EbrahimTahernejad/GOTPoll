@@ -61,3 +61,18 @@ test('ignored shows are skipped', () => {
   assert.equal(m.match('hxh', new Set([5]))?.showId ?? null, null);
   assert.equal(m.match('hunter x hunter', new Set([5]))?.showId, 6);
 });
+
+test('the chatter floor follows the catalog: popularity is in its own units', () => {
+  // a games catalog counts Wikipedias (8–156), not AniList users
+  const shows = [
+    { id: 1, titleRomaji: 'Elden Ring', titleEnglish: null, synonyms: ['ER'], startYear: 2022, popularity: 46 },
+    { id: 2, titleRomaji: 'Obscure Thing', titleEnglish: null, synonyms: [], startYear: 2022, popularity: 9 },
+  ];
+  const anime = new Matcher({ shows });
+  assert.equal(anime.match('elden ring'), null); // 46 "users" looks obscure on the anime scale
+  const games = new Matcher({ shows, minPopularityShort: 15 });
+  assert.equal(games.match('elden ring')?.showId, 1);
+  assert.equal(games.match('obscure thing'), null);
+  const custom = new Matcher({ shows, minPopularityShort: 0 });
+  assert.equal(custom.match('obscure thing')?.showId, 2);
+});

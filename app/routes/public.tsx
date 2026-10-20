@@ -15,10 +15,11 @@ import useLiveTime from '~/hooks/useLiveTime';
 const EXAMPLES: Record<CatalogKind, string[]> = {
   anilist: ['frieren', 'jjk', 'one piece', 'demon slayer', 'spy x family', 'chainsaw man'],
   imdb: ['breaking bad', 'interstellar', 'the office', 'dune', 'oppenheimer', 'severance'],
+  games: ['elden ring', 'minecraft', 'gta v', 'hollow knight', 'baldurs gate 3', 'zelda'],
   custom: [],
 };
 /** "Type an anime title …" – what one vote is, for the catalog in use */
-export const WHAT: Record<CatalogKind, string> = { anilist: 'an anime title', imdb: 'a movie or show', custom: 'a title' };
+export const WHAT: Record<CatalogKind, string> = { anilist: 'an anime title', imdb: 'a movie or show', games: 'a game', custom: 'a title' };
 
 export default function Public() {
   const { snap, connected } = useLiveRanking();

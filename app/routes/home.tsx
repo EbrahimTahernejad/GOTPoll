@@ -312,7 +312,7 @@ export default function Home() {
                           </span>
                         )}
                         {s.coverImage ? (
-                          <img src={s.coverImage} alt="" className="relative h-11 w-8 shrink-0 rounded object-cover" />
+                          <img src={s.coverImage} alt="" onError={(e) => (e.currentTarget.style.visibility = 'hidden')} className="bg-muted relative h-11 w-8 shrink-0 rounded object-cover" />
                         ) : (
                           <div className="bg-muted relative h-11 w-8 shrink-0 rounded" />
                         )}
