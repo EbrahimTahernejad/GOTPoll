@@ -4,6 +4,9 @@ import {
   ArrowRight,
   Archive,
   Eye,
+  EyeOff,
+  ExternalLink,
+  MessageSquareText,
   Check,
   Coins,
   Dices,
@@ -27,6 +30,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import AppHeader from '~/components/app/app-header';
 import AssignDialog from '~/components/poll/assign-dialog';
+import PhrasesDialog from '~/components/poll/phrases-dialog';
 import { EmptyState, FilterChip, FilterGroup, Source, Stat, StateBadge } from '~/components/poll/bits';
 import ShortlistEditor from '~/components/poll/shortlist-editor';
 import UnmatchedPanel from '~/components/poll/unmatched-panel';
@@ -47,7 +51,7 @@ import useCatalog from '~/hooks/useCatalog';
 import useLibrary from '~/hooks/useLibrary';
 import usePoll from '~/hooks/usePoll';
 import useTournament from '~/hooks/useTournament';
-import { channelsOf, matchLabel } from '~/lib/tournament';
+import { channelsOf, matchLabel, sourceUrl } from '~/lib/tournament';
 import { cn } from '~/lib/utils';
 
 const FORMATS: { id: ShowFormat; label: string }[] = [
@@ -73,7 +77,7 @@ export default function TournamentPage() {
   const library = useLibrary();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<TournamentAction['type'] | null>(null);
-  const [assigning, setAssigning] = useState<PollPhrase | null>(null);
+  const [assigning, setAssigning] = useState<{ phrase: PollPhrase; current: number | null } | null>(null);
   const [closing, setClosing] = useState(false);
   useEffect(() => {
     if (!error) return;
@@ -97,6 +101,10 @@ export default function TournamentPage() {
   const channels = useMemo(() => channelsOf(poll.sources), [poll.sources]);
   const t = snap?.tournament ?? null;
   const counting = poll.owner === 'tournament' && poll.state === 'running';
+  // after the open round its votes are still there to fix (teach, reassign, ignore)
+  const fixable = counting || (t?.phase === 'open-results' && poll.owner === 'tournament' && poll.state === 'ended');
+  const [inspecting, setInspecting] = useState<RankedShow | null>(null);
+  const [ignoring, setIgnoring] = useState<Show | null>(null);
 
   return (
     <>
@@ -166,7 +174,16 @@ export default function TournamentPage() {
           {!snap ? null : !t ? (
             <Setup snap={snap} library={library} act={act} pending={pending} pollBusy={poll.state === 'running'} />
           ) : t.phase === 'open' || t.phase === 'open-results' ? (
-            <OpenRound snap={snap} t={t} poll={poll} library={library} act={act} pending={pending} />
+            <OpenRound
+              snap={snap}
+              t={t}
+              poll={poll}
+              library={library}
+              act={act}
+              pending={pending}
+              onInspect={setInspecting}
+              onIgnore={setIgnoring}
+            />
           ) : (
             <>
               <LiveMatch snap={snap} poll={poll} library={library} channels={channels} act={act} pending={pending} />
@@ -193,15 +210,49 @@ export default function TournamentPage() {
               </div>
             </div>
           )}
-          {counting ? (
-            <UnmatchedPanel phrases={poll.unmatched} onAssign={setAssigning} />
+          {fixable ? (
+            <UnmatchedPanel phrases={poll.unmatched} onAssign={(p) => setAssigning({ phrase: p, current: null })} />
           ) : (
             <History snap={snap} library={library} act={act} />
           )}
         </aside>
       </div>
 
-      <AssignDialog phrase={assigning} onClose={() => setAssigning(null)} />
+      <AssignDialog phrase={assigning?.phrase ?? null} currentShowId={assigning?.current} onClose={() => setAssigning(null)} />
+      <PhrasesDialog
+        show={inspecting}
+        version={poll.version}
+        onClose={() => setInspecting(null)}
+        onReassign={(p) => {
+          setAssigning({ phrase: p, current: inspecting?.id ?? null });
+          setInspecting(null);
+        }}
+      />
+      <Dialog open={ignoring !== null} onOpenChange={(o) => !o && setIgnoring(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ignore {ignoring?.titleRomaji}?</DialogTitle>
+            <DialogDescription>
+              It disappears from this and every future poll; its votes are re-matched to the next best show (or land in
+              Unmatched). Undo it in Settings → Library. To only take it out of this tournament, use Remove instead.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIgnoring(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (ignoring) await window.GOTPoll.ignores.set(ignoring.id, true);
+                setIgnoring(null);
+              }}
+            >
+              Ignore
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={closing} onOpenChange={setClosing}>
         <DialogContent>
           <DialogHeader>
@@ -440,6 +491,8 @@ function OpenRound({
   library,
   act,
   pending,
+  onInspect,
+  onIgnore,
 }: {
   snap: TournamentSnapshot;
   t: Tournament;
@@ -447,6 +500,9 @@ function OpenRound({
   library: Map<number, Show>;
   act: (a: TournamentAction) => Promise<void>;
   pending: string | null;
+  /** the Poll screen's per-show tools: what chat typed, ignore everywhere */
+  onInspect: (s: RankedShow) => void;
+  onIgnore: (s: Show) => void;
 }) {
   const live = t.phase === 'open';
   const cut = live ? null : t.cut;
@@ -681,17 +737,39 @@ function OpenRound({
                         )}
                         <span className="relative w-12 text-right text-base font-bold tabular-nums">{r.count}</span>
                         {!picking && (
-                          <button
-                            className="text-muted-foreground relative grid h-7 w-7 place-items-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-500/15 hover:text-rose-600 dark:hover:text-rose-400"
-                            title="Remove it (breaks the rules) – the next show moves up"
-                            disabled={pending !== null}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void remove(r.id);
-                            }}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
+                          <div className="relative flex opacity-0 transition-opacity group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+                            {s && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                title="What chat typed – move phrases to another show"
+                                onClick={() => onInspect({ ...s, count: r.count })}
+                              >
+                                <MessageSquareText className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {sourceUrl(r.id) && (
+                              <Button size="icon" variant="ghost" className="h-7 w-7" title="Open its page" onClick={() => window.GOTPoll.openExternal(sourceUrl(r.id)!)}>
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {s && (
+                              <Button size="icon" variant="ghost" className="h-7 w-7" title="Ignore it in every poll – its votes go to the next best match" onClick={() => onIgnore(s)}>
+                                <EyeOff className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 hover:bg-rose-500/15 hover:text-rose-600 dark:hover:text-rose-400"
+                              title="Remove it from this tournament (breaks the rules) – the next show moves up"
+                              disabled={pending !== null}
+                              onClick={() => void remove(r.id)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
                         )}
                       </div>
                     </motion.li>

@@ -378,3 +378,23 @@ test('removing nominees: mid-round, on the qualifiers step, returning shows, and
   assert.equal(t.snapshot().tournament.slots[at], 3);
   engine.stop();
 });
+
+test('fixing chat after the open round (teach a phrase, ignore a show) re-ranks the qualifiers', async () => {
+  const { engine, t } = setup();
+  await t.act({ type: 'draft', patch: { size: 2, carried: [], thirdPlace: false } });
+  await t.act({ type: 'start-open' });
+  for (const [u, s] of [['a', 'jujutsu kaisen'], ['b', 'jujutsu kaisen'], ['c', 'chainsaw man'], ['d', 'one piece'], ['e', 'the frieren one'], ['f', 'the frieren one'], ['g', 'the frieren one']]) say(engine, u, s);
+  await t.act({ type: 'stop-open' });
+  // Chainsaw Man and One Piece are level for the 2nd spot: a tie on the line
+  assert.deepEqual(t.snapshot().qualified, [2]);
+  assert.deepEqual(t.snapshot().tied.sort(), [3, 4]);
+  // three viewers typed something the matcher missed: teach it after the round
+  engine.assign('the frieren one', 1);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(t.snapshot().qualified, [1, 2]);
+  assert.deepEqual(t.snapshot().tied, []); // the tie is gone with it
+  assert.equal(t.publicView().standings[0].id, 1);
+  // ignoring a show everywhere recounts too
+  engine.setIgnored(2, true);
+  assert.deepEqual(t.snapshot().tournament.open.ranking.map((r) => r.id).includes(2), false);
+});

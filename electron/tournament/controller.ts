@@ -759,10 +759,21 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
 
   private onPoll(s: PollSnapshot) {
     const t = this.t;
-    if (!t || t.phase !== 'open' || s.owner !== 'tournament' || this.poll.run !== t.open.run) return;
-    // keep the standings fresh so a crash mid-round loses little
-    t.open.ranking = s.ranking.slice(0, 100).map((r) => ({ id: r.id, count: r.count }));
-    if (Date.now() - this.lastSave > SAVE_EVERY_MS) this.save();
+    if (!t || (t.phase !== 'open' && t.phase !== 'open-results') || s.owner !== 'tournament' || this.poll.run !== t.open.run) return;
+    const ranking = s.ranking.slice(0, 100).map((r) => ({ id: r.id, count: r.count }));
+    if (t.phase === 'open') {
+      // keep the standings fresh so a crash mid-round loses little
+      t.open.ranking = ranking;
+      if (Date.now() - this.lastSave > SAVE_EVERY_MS) this.save();
+      return;
+    }
+    // after the round the engine still holds its votes: a phrase taught or a
+    // show ignored on the qualifiers step recounts – follow it
+    if (JSON.stringify(ranking) === JSON.stringify(t.open.ranking)) return;
+    t.open.ranking = ranking;
+    this.refreshCut(t);
+    this.save();
+    this.emit('update', this.snapshot());
   }
 
   /** Settle the phase, record a finished tournament, save, tell everyone. */
