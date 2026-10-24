@@ -208,6 +208,13 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     sups.forEach(({ sup }) => void sup.stop());
   }
 
+  /** Change which shows never count, mid-run (a tournament striking out a nominee). */
+  setExclude(ids: number[]) {
+    this.exclude = new Set(ids);
+    this.version++;
+    this.schedule(true);
+  }
+
   /** Push a fresh snapshot (e.g. posters just arrived for titles on the board). */
   refresh() {
     this.schedule();

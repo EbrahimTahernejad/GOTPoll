@@ -239,6 +239,8 @@ declare global {
     cut?: CutTie | null;
     /** the last coin flip, for the viewer page's coin screen ("cut" = the qualifying line) */
     coin?: { key: string; at: number } | null;
+    /** struck out by the streamer (rules: too many episodes, already watched, …) – never count, never qualify */
+    removed?: number[];
   };
 
   type BracketStatus = 'waiting' | 'ready' | 'live' | 'done' | 'tie' | 'bye' | 'empty';
@@ -315,6 +317,9 @@ declare global {
     | { type: 'coin-flip'; key: string }
     | { type: 'forget-history'; id: string }
     | { type: 'view-archive'; id: string }
+    | { type: 'remove-nominee'; showId: number }
+    | { type: 'restore-nominee'; showId: number }
+    | { type: 'disqualify'; index: number }
     | { type: 'stop-viewing' };
 
   type PublicMatch = {

@@ -457,8 +457,12 @@ function OpenRound({
     if (!unsettled) setPicking(null);
   }, [unsettled]);
   const time = useLiveTime(t.open.startedAt, t.open.endedAt);
-  const spots = t.config.size - t.config.carried.length;
-  const ranking = live ? poll.ranking.map((r) => ({ id: r.id, count: r.count })) : t.open.ranking;
+  const removed = t.removed ?? [];
+  const carried = t.config.carried.filter((id) => !removed.includes(id));
+  const spots = t.config.size - carried.length;
+  // struck-out shows: the live count already leaves them out
+  const ranking = (live ? poll.ranking.map((r) => ({ id: r.id, count: r.count })) : t.open.ranking).filter((r) => !removed.includes(r.id));
+  const remove = (showId: number) => act({ type: 'remove-nominee', showId });
   const voted = ranking.filter((r) => r.count > 0);
   const leader = voted[0]?.count ?? 0;
 
@@ -562,13 +566,42 @@ function OpenRound({
         </div>
       )}
 
-      {t.config.carried.length > 0 && (
+      {carried.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
           <span className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">Already in</span>
-          {t.config.carried.map((id) => (
-            <span key={id} className="bg-background/60 flex items-center gap-1.5 rounded-full border py-0.5 pr-2.5 pl-0.5 text-xs">
+          {carried.map((id) => (
+            <span key={id} className="bg-background/60 flex items-center gap-1.5 rounded-full border py-0.5 pr-1 pl-0.5 text-xs">
               <Cover show={library.get(id)} className="h-5 w-5 rounded-full" />
               {library.get(id)?.titleRomaji ?? `#${id}`}
+              <button
+                className="text-muted-foreground hover:text-foreground grid h-5 w-5 place-items-center rounded-full hover:bg-rose-500/15"
+                title="Remove it from the tournament – its spot goes to the open round"
+                disabled={pending !== null}
+                onClick={() => remove(id)}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* struck out by the rules (too many episodes, already watched, …) – one click brings one back */}
+      {removed.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+          <span className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">Removed</span>
+          {removed.map((id) => (
+            <span key={id} className="flex items-center gap-1.5 rounded-full border border-dashed py-0.5 pr-1 pl-0.5 text-xs opacity-70">
+              <Cover show={library.get(id)} className="h-5 w-5 rounded-full grayscale" />
+              <span className="line-through">{library.get(id)?.titleRomaji ?? `#${id}`}</span>
+              <button
+                className="text-muted-foreground hover:text-foreground grid h-5 w-5 place-items-center rounded-full hover:bg-emerald-500/15"
+                title="Bring it back"
+                disabled={pending !== null}
+                onClick={() => act({ type: 'restore-nominee', showId: id })}
+              >
+                <RotateCcw className="h-3 w-3" />
+              </button>
             </span>
           ))}
         </div>
@@ -607,7 +640,7 @@ function OpenRound({
                       )}
                       <div
                         className={cn(
-                          'relative flex items-center gap-3 overflow-hidden rounded-md px-2 py-1.5',
+                          'group relative flex items-center gap-3 overflow-hidden rounded-md px-2 py-1.5',
                           !inside && !tied && 'opacity-55',
                           picking && tied && 'hover:bg-accent cursor-pointer'
                         )}
@@ -647,6 +680,19 @@ function OpenRound({
                           </span>
                         )}
                         <span className="relative w-12 text-right text-base font-bold tabular-nums">{r.count}</span>
+                        {!picking && (
+                          <button
+                            className="text-muted-foreground relative grid h-7 w-7 place-items-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-500/15 hover:text-rose-600 dark:hover:text-rose-400"
+                            title="Remove it (breaks the rules) – the next show moves up"
+                            disabled={pending !== null}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void remove(r.id);
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </motion.li>
                   );

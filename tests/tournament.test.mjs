@@ -341,3 +341,40 @@ test('a finished tournament can be re-opened read-only, on its report', async ()
   assert.equal(t.snapshot().viewing, null);
   engine.stop();
 });
+
+test('removing nominees: mid-round, on the qualifiers step, returning shows, and in the bracket', async () => {
+  const { engine, t } = setup();
+  await t.act({ type: 'draft', patch: { size: 3, carried: [6], thirdPlace: false } });
+  await t.act({ type: 'start-open' });
+  for (const [u, s] of [['a', 'sousou no frieren'], ['b', 'sousou no frieren'], ['c', 'sousou no frieren'], ['d', 'jujutsu kaisen'], ['e', 'jujutsu kaisen'], ['f', 'chainsaw man']]) say(engine, u, s);
+  // mid-round: Frieren is struck out – its votes stop counting, the round goes on
+  await t.act({ type: 'remove-nominee', showId: 1 });
+  assert.deepEqual(engine.snapshot().ranking.map((r) => r.id), [2, 3]);
+  say(engine, 'g', 'sousou no frieren');
+  await t.act({ type: 'undo' }); // and back: everyone who voted for it counts again
+  assert.equal(engine.snapshot().ranking.find((r) => r.id === 1).count, 4);
+  assert.equal(engine.isRunning, true);
+
+  await t.act({ type: 'stop-open' });
+  assert.deepEqual(t.snapshot().qualified, [1, 2]);
+  // after the round: JJK breaks the rules – Chainsaw Man moves up
+  await t.act({ type: 'remove-nominee', showId: 2 });
+  assert.deepEqual(t.snapshot().qualified, [1, 3]);
+  assert.deepEqual(t.publicView().standings.map((e) => e.id), [1, 3]);
+  // a returning show can go too – its spot opens for the open round
+  await t.act({ type: 'remove-nominee', showId: 6 });
+  assert.equal(t.publicView().qualifySpots, 3);
+  assert.deepEqual(t.snapshot().qualified, [1, 3]); // only two left with votes
+  await t.act({ type: 'restore-nominee', showId: 6 });
+  await t.act({ type: 'build-bracket' });
+  assert.deepEqual(t.snapshot().tournament.slots.filter((x) => x !== null).sort(), [1, 3, 6]);
+
+  // in the bracket: disqualify brings in the best open-round show not in yet (none left → a bye)
+  const at = t.snapshot().tournament.slots.indexOf(3);
+  await t.act({ type: 'disqualify', index: at });
+  assert.equal(t.snapshot().tournament.slots[at], null);
+  assert.ok(t.snapshot().tournament.removed.includes(3));
+  await t.act({ type: 'undo' });
+  assert.equal(t.snapshot().tournament.slots[at], 3);
+  engine.stop();
+});

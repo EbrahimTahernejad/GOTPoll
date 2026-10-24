@@ -41,9 +41,16 @@ const int = (v: unknown, min: number, max: number, fallback: number) =>
 
 type Engine = Pick<
   PollEngine,
-  'start' | 'stop' | 'resume' | 'reset' | 'snapshot' | 'show' | 'on' | 'run' | 'currentOwner' | 'isRunning'
+  'start' | 'stop' | 'resume' | 'reset' | 'snapshot' | 'show' | 'on' | 'run' | 'currentOwner' | 'isRunning' | 'setExclude'
 >;
 type Store = Pick<UserStore, 'settings' | 'loadState' | 'saveState' | 'tournaments' | 'tournament' | 'saveTournament' | 'forgetTournament'>;
+
+/** Returning shows still in (not struck out). */
+const carriedOf = (t: Tournament) => t.config.carried.filter((id) => !t.removed?.includes(id));
+/** Open-round standings without struck-out shows. */
+const rankingOf = (t: Tournament) => (t.removed?.length ? t.open.ranking.filter((r) => !t.removed!.includes(r.id)) : t.open.ranking);
+/** What the open round's count leaves out: returning shows (already in) and struck-out ones. */
+const excludedOf = (t: Tournament) => [...new Set([...t.config.carried, ...(t.removed ?? [])])];
 
 const summary = (r: TournamentRecord): TournamentSummary => {
   const { data, ...rest } = r;
@@ -133,9 +140,9 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
       phase: t.phase,
       screen: t.screen,
       size: t.config.size,
-      qualifySpots: Math.max(0, t.config.size - t.config.carried.length),
-      carried: t.config.carried.flatMap((id) => entry(id) ?? []),
-      standings: t.open.ranking.slice(0, t.config.showTop).flatMap((r) => entry(r.id, r.count) ?? []),
+      qualifySpots: Math.max(0, t.config.size - carriedOf(t).length),
+      carried: carriedOf(t).flatMap((id) => entry(id) ?? []),
+      standings: rankingOf(t).slice(0, t.config.showTop).flatMap((r) => entry(r.id, r.count) ?? []),
       ...this.standing(t),
       cut: t.cut ? { ...t.cut, candidates: t.cut.candidates.flatMap((id) => entry(id, t.cut!.votes) ?? []) } : null,
       coin: this.coinInfo(t, coinMatch),
@@ -270,10 +277,42 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
         t.screen = method === 'manual' ? 'open-results' : method;
         return;
       }
+      case 'remove-nominee':
+      case 'restore-nominee': {
+        const t = this.need('open', 'open-results');
+        const removed = new Set(t.removed ?? []);
+        if (a.type === 'remove-nominee' ? removed.has(a.showId) : !removed.has(a.showId)) return;
+        if (a.type === 'remove-nominee' && !this.poll.show(a.showId)) throw new Error('Unknown show');
+        this.push(a.type === 'remove-nominee' ? 'Remove a nominee' : 'Bring a nominee back');
+        if (a.type === 'remove-nominee') removed.add(a.showId);
+        else removed.delete(a.showId);
+        t.removed = [...removed];
+        if (t.phase === 'open') {
+          // the open round keeps going; votes for it just stop counting
+          if (this.poll.currentOwner === 'tournament' && this.poll.run === t.open.run) this.poll.setExclude(excludedOf(t));
+        } else {
+          this.refreshCut(t);
+        }
+        return;
+      }
+      case 'disqualify': {
+        const t = this.need('bracket', 'done');
+        this.noLive();
+        const out = t.slots[a.index];
+        if (!Number.isInteger(a.index) || typeof out !== 'number') throw new Error('Nobody in that slot');
+        this.push('Disqualify a show');
+        t.removed = [...new Set([...(t.removed ?? []), out])];
+        // the best open-round show not already in takes the place (or it's a bye)
+        const inBracket = new Set(t.slots.filter((x): x is number => x !== null));
+        const next = qualify(this.effectiveRanking(t), [], MAX_ENTRIES).find((id) => !inBracket.has(id) && !t.removed!.includes(id));
+        t.slots[a.index] = next ?? null;
+        this.afterEdit();
+        return;
+      }
       case 'build-bracket': {
         const t = this.need('open-results');
         if (t.cut && !t.cut.picked) throw new Error('Settle the tie on the qualifying line first');
-        const ids = qualify(this.effectiveRanking(t), t.config.carried, t.config.size);
+        const ids = qualify(this.effectiveRanking(t), carriedOf(t), t.config.size);
         if (ids.length < MIN_ENTRIES) throw new Error('Not enough shows got votes to make a bracket');
         this.push('Build the bracket');
         t.slots = seedSlots(ids);
@@ -295,7 +334,7 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
             [ids[i], ids[j]] = [ids[j], ids[i]];
           }
         } else {
-          const order = qualify(this.effectiveRanking(t), t.config.carried, MAX_ENTRIES);
+          const order = qualify(this.effectiveRanking(t), carriedOf(t), MAX_ENTRIES);
           const rank = (id: number) => (order.includes(id) ? order.indexOf(id) : 999);
           ids.sort((x, y) => rank(x) - rank(y));
         }
@@ -580,22 +619,33 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
     return match?.result?.coin && typeof match.winner === 'number' ? { key: coin.key, at: coin.at, winner: match.winner } : null;
   }
 
+  /** Recompute the tie on the qualifying line; a settled one stays settled if it's the same tie. */
+  private refreshCut(t: Tournament) {
+    const next = this.findCut(t);
+    const prev = t.cut;
+    const same =
+      !!prev && !!next && prev.slots === next.slots && prev.candidates.length === next.candidates.length && prev.candidates.every((id) => next.candidates.includes(id));
+    t.cut = same ? prev! : next;
+    if (!same && (t.screen === 'draw' || (t.screen === 'coin' && t.coin?.key === 'cut'))) t.screen = 'open-results';
+  }
+
   private findCut(t: Tournament): CutTie | null {
-    const tie = cutTie(t.open.ranking, t.config.carried, t.config.size);
+    const tie = cutTie(rankingOf(t), carriedOf(t), t.config.size);
     return tie && { ...tie, picked: null, method: null, at: null };
   }
 
   /** The open round's standings with the tied shows that lost out removed. */
   private effectiveRanking(t: Tournament) {
     const cut = t.cut;
-    return t.open.ranking.filter((r) => !cut || !cut.candidates.includes(r.id) || cut.picked?.includes(r.id));
+    return rankingOf(t).filter((r) => !cut || !cut.candidates.includes(r.id) || cut.picked?.includes(r.id));
   }
 
   /** Who's through from the open round, and who's still level on the line. */
   private standing(t = this.t): { qualified: number[]; tied: number[] } {
     if (!t) return { qualified: [], tied: [] };
-    const spots = Math.max(0, t.config.size - t.config.carried.length);
-    const list = t.open.ranking.filter((r) => r.count > 0 && !t.config.carried.includes(r.id));
+    const carried = carriedOf(t);
+    const spots = Math.max(0, t.config.size - carried.length);
+    const list = rankingOf(t).filter((r) => r.count > 0 && !carried.includes(r.id));
     const cut = t.phase === 'open' ? null : t.cut;
     if (!cut) return { qualified: list.slice(0, spots).map((r) => r.id), tied: [] };
     const above = list.filter((r) => r.count > cut.votes).map((r) => r.id);
@@ -615,7 +665,7 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
     // chat may back as many shows as it likes; returning shows are already in
     await this.poll.start(
       { mode: 'open', filters: t.config.filters, shortlist: [] },
-      { owner: 'tournament', onePerViewer: false, exclude: t.config.carried }
+      { owner: 'tournament', onePerViewer: false, exclude: excludedOf(t) }
     );
     t.open = { ranking: [], startedAt: Date.now(), endedAt: null, run: this.poll.run };
   }
@@ -677,6 +727,7 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
     if (ours && this.poll.run === wanted) {
       // the engine still holds that vote's count: carry on with it
       this.poll.resume();
+      if (t.phase === 'open') this.poll.setExclude(excludedOf(t));
       return;
     }
     // the count is gone (another vote ran since, or the app restarted): go again

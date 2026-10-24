@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeftRight, Coins, Crown, Eraser, Medal, MoreHorizontal, Play, Replace, RotateCcw, Shuffle, Tv, UserX, Wand2 } from 'lucide-react';
+import { ArrowLeftRight, Ban, Coins, Crown, Eraser, Medal, MoreHorizontal, Play, Replace, RotateCcw, Shuffle, Tv, UserX, Wand2 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '~/components/ui/button';
 import {
@@ -110,6 +110,7 @@ export default function BracketEditor({
                       if (what === 'replace') setReplacing(slot);
                       if (what === 'swap') setSwapFrom(slot);
                       if (what === 'bye') void act({ type: 'set-slot', index: slot, showId: null });
+                      if (what === 'disqualify') void act({ type: 'disqualify', index: slot });
                     }}
                   />
                 ))}
@@ -156,7 +157,7 @@ function MatchCard({
   liveBusy: boolean;
   swapping: boolean;
   onSlot: (side: 0 | 1) => boolean;
-  onSlotMenu: (side: 0 | 1, what: 'replace' | 'swap' | 'bye') => void;
+  onSlotMenu: (side: 0 | 1, what: 'replace' | 'swap' | 'bye' | 'disqualify') => void;
 }) {
   const isLive = t.live?.key === m.key && t.live.stage !== 'result';
   const focused = t.focus === m.key;
@@ -286,7 +287,7 @@ function SideRow({
   editable: boolean;
   swapping: boolean;
   onClick: () => boolean;
-  onMenu: (what: 'replace' | 'swap' | 'bye') => void;
+  onMenu: (what: 'replace' | 'swap' | 'bye' | 'disqualify') => void;
 }) {
   const body = (
     <div
@@ -344,6 +345,11 @@ function SideRow({
         {id !== null && (
           <DropdownMenuItem onClick={() => onMenu('bye')}>
             <UserX className="h-3.5 w-3.5" /> Make it a bye
+          </DropdownMenuItem>
+        )}
+        {typeof id === 'number' && (
+          <DropdownMenuItem onClick={() => onMenu('disqualify')}>
+            <Ban className="h-3.5 w-3.5" /> Disqualify – next best comes in
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
