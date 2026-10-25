@@ -25,6 +25,8 @@ export const catalog = new Catalogs(userData, path.resolve(dirname, '../assets/s
   selected: () => user.settings().catalog,
   setSelected: (id) => user.setSettings({ catalog: id }),
   animeExtras: () => user.customShows(),
+  overrides: () => user.overrides(),
+  saveOverride: (id, o) => user.setOverride(id, o),
 });
 catalog.init();
 export const ai = new LocalAi(path.join(userData, 'ai'), {
@@ -178,7 +180,7 @@ export function searchIn(id: string, query: string, limit = 10): SearchHit[] {
     const shows = catalog.showsOf(id).filter((s) => s.eligible);
     entry = {
       lib: new Map(shows.map((s) => [s.id, s])),
-      matcher: new Matcher({ shows, sequels: id === 'anime' ? catalog.anime.sequelAliases() : [], minPopularityShort: catalog.floorOf(id) }),
+      matcher: new Matcher({ shows, sequels: catalog.sequelsOf(id), minPopularityShort: catalog.floorOf(id) }),
     };
     otherSearch.set(id, entry);
   }

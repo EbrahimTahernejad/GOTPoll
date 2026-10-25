@@ -27,12 +27,14 @@ function seed(dir) {
   return file;
 }
 
-function catalogs(dir) {
+function catalogs(dir, saved = new Map()) {
   let selected = 'anime';
   const c = new Catalogs(dir, seed(dir), {
     selected: () => selected,
     setSelected: (id) => (selected = id),
     animeExtras: () => [],
+    overrides: () => new Map(saved),
+    saveOverride: (id, o) => (o ? saved.set(id, o) : saved.delete(id)),
   });
   c.init();
   return c;
@@ -170,4 +172,68 @@ test('games: sliced Wikidata import, names, Steam covers, other names in batches
   assert.equal(aliasCalls, 10); // 2998 games, 300 per request
   assert.deepEqual(c.info().formats, [{ id: 'TV', label: 'Game' }]);
   assert.equal(c.lookup(GAME_ID_BASE + 1000).titleRomaji, 'Elden Ring');
+});
+
+test('built-in catalogs: split a sequel out, edit a title, add one – kept apart from the catalog file', () => {
+  const dir = tmp();
+  // a franchise: Naruto ← Shippuden ← Boruto ← Boruto: Two Blue Vortex
+  const file = path.join(dir, 'franchise.db');
+  const db = new Database(file);
+  db.exec(CATALOG_SQL);
+  const ins = db.prepare(
+    `INSERT INTO shows (id, title_romaji, synonyms, format, popularity, status, start_year, parent_id) VALUES (?, ?, '[]', 'TV', 1000, 'FINISHED', 2002, ?)`
+  );
+  ins.run(20, 'NARUTO', null);
+  ins.run(1735, 'NARUTO: Shippuuden', 20);
+  ins.run(97938, 'BORUTO: NARUTO NEXT GENERATIONS', 1735);
+  ins.run(179, 'BORUTO: Two Blue Vortex', 97938);
+  db.close();
+  const saved = new Map();
+  let selected = 'anime';
+  const c = new Catalogs(dir, file, {
+    selected: () => selected,
+    setSelected: (id) => (selected = id),
+    animeExtras: () => [],
+    overrides: () => new Map(saved),
+    saveOverride: (id, o) => (o ? saved.set(id, o) : saved.delete(id)),
+  });
+  c.init();
+  const rootOf = (title) => c.sequelAliases().find((x) => x.title === title)?.rootId;
+  assert.deepEqual(c.all().filter((s) => s.eligible).map((s) => s.id), [20]);
+  assert.equal(rootOf('BORUTO: Two Blue Vortex'), 20);
+
+  c.setOverride(97938, { split: true });
+  assert.deepEqual(c.all().filter((s) => s.eligible).map((s) => s.id).sort((a, b) => a - b), [20, 97938]);
+  assert.equal(c.all().find((s) => s.id === 97938).split, true);
+  // its own sequel now follows it, not Naruto
+  assert.equal(rootOf('BORUTO: Two Blue Vortex'), 97938);
+  assert.equal(rootOf('NARUTO: Shippuuden'), 20);
+
+  c.setOverride(20, { title: 'Naruto', altTitles: ['Naruto (2002)', 'Naruto OG'] });
+  const n = c.all().find((s) => s.id === 20);
+  assert.equal(n.titleRomaji, 'Naruto');
+  assert.equal(n.titleEnglish, 'Naruto (2002)');
+  assert.deepEqual(n.synonyms, ['Naruto OG']);
+  assert.equal(n.edited, true);
+
+  const added = c.editable('anime').add({ title: 'Some Missing Show', altTitles: [], year: 2024, format: 'TV', cover: null, release: 'released' });
+  assert.ok(c.all().some((s) => s.id === added.id && s.added));
+  assert.equal(c.lookup(added.id).titleRomaji, 'Some Missing Show');
+  assert.equal(c.list().filter((x) => x.kind === 'custom').length, 0); // additions aren't a catalog of their own
+
+  // undo the split: back to the franchise
+  c.setOverride(97938, null);
+  assert.equal(rootOf('BORUTO: Two Blue Vortex'), 20);
+
+  // a fresh start (e.g. after a catalog update) keeps every change
+  const again = new Catalogs(dir, file, {
+    selected: () => 'anime',
+    setSelected: () => {},
+    animeExtras: () => [],
+    overrides: () => new Map(saved),
+    saveOverride: () => {},
+  });
+  again.init();
+  assert.equal(again.all().find((s) => s.id === 20).titleRomaji, 'Naruto');
+  assert.ok(again.all().some((s) => s.id === added.id));
 });

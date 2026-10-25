@@ -413,18 +413,23 @@ function CustomEditor({ c, catalogs, onError, onClose }: { c: CatalogSummary; ca
   );
 }
 
-function EntryDialog({
+export function EntryDialog({
   entry,
   labels,
   onClose,
   onSave,
   onError,
+  onReset,
+  description = 'Chat votes by its name or any of the other names you list.',
 }: {
   entry: Show | 'new' | null;
   labels: Record<ShowFormat, string>;
   onClose: () => void;
   onSave: (e: CustomEntryInput) => Promise<void>;
   onError: (m: string) => void;
+  /** built-in titles: drop the streamer's changes */
+  onReset?: () => void;
+  description?: string;
 }) {
   const [title, setTitle] = useState('');
   const [alts, setAlts] = useState('');
@@ -458,7 +463,7 @@ function EntryDialog({
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{entry === 'new' ? 'Add an entry' : 'Edit entry'}</DialogTitle>
-          <DialogDescription>Chat votes by its name or any of the other names you list.</DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-[1fr_auto] gap-4">
           <div className="space-y-3">
@@ -562,6 +567,11 @@ function EntryDialog({
           </div>
         </div>
         <DialogFooter>
+          {onReset && (
+            <Button variant="ghost" className="mr-auto" onClick={onReset} title="Back to the catalog's own title, names and cover">
+              Reset to the catalog's
+            </Button>
+          )}
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>

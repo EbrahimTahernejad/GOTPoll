@@ -83,9 +83,12 @@ ipcMain.handle('catalogs:remove', (_, id: string) => {
 ipcMain.handle('catalogs:labels', (_, id: string) => catalog.custom(id).labels());
 ipcMain.handle('catalogs:setLabels', (_, id: string, labels: Partial<Record<ShowFormat, string>>) => catalog.custom(id).setLabels(labels));
 ipcMain.handle('catalogs:entries', (_, id: string) => catalog.showsOf(id));
-ipcMain.handle('catalogs:addEntry', (_, id: string, e: CustomEntryInput) => catalog.custom(id).add(e));
-ipcMain.handle('catalogs:updateEntry', (_, id: string, showId: number, e: CustomEntryInput) => catalog.custom(id).update(showId, e));
-ipcMain.handle('catalogs:removeEntry', (_, id: string, showId: number) => catalog.custom(id).remove(showId));
+// a custom catalog's entries, or titles added to a built-in one
+ipcMain.handle('catalogs:addEntry', (_, id: string, e: CustomEntryInput) => catalog.editable(id).add(e));
+ipcMain.handle('catalogs:updateEntry', (_, id: string, showId: number, e: CustomEntryInput) => catalog.editable(id).update(showId, e));
+ipcMain.handle('catalogs:removeEntry', (_, id: string, showId: number) => catalog.editable(id).remove(showId));
+ipcMain.handle('catalogs:override', (_, showId: number, o: ShowOverride | null) => catalog.setOverride(showId, o));
+ipcMain.handle('catalogs:split', (_, showId: number, on: boolean) => catalog.setSplit(showId, on));
 ipcMain.handle('catalogs:search', (_, id: string, query: string, limit?: number) => searchIn(id, query, limit));
 ipcMain.handle('catalogs:saveCover', (_, bytes: ArrayBuffer, type: string) => saveCover(bytes, type));
 

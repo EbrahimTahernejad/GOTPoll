@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { CoverResolver } from './covers.js';
 import { CustomCatalog, customNumberOf, isCustomId } from './custom.js';
@@ -44,6 +44,39 @@ const BUILT_IN: { id: BuiltIn; name: string; kind: CatalogKind }[] = [
   { id: 'games', name: 'Games', kind: 'games' },
 ];
 const isBuiltIn = (id: string): id is BuiltIn => BUILT_IN.some((b) => b.id === id);
+/** custom-catalog numbers reserved for titles added to the built-in catalogs */
+const ADDITIONS_NUMBER: Record<BuiltIn, number> = { anime: 9001, screen: 9002, games: 9003 };
+
+// chat is Latin-script; skip "进击的巨人 第二季" style sequel titles
+const LATIN = /^[\p{Script=Latin}\p{N}\p{P}\p{S}\s]+$/u;
+
+/** Titles of later seasons, each pointing at the root of its franchise (stopping at split-off sequels). */
+function sequelAliasesOf(shows: Show[]): { title: string; rootId: number }[] {
+  const byId = new Map(shows.map((s) => [s.id, s]));
+  const out: { title: string; rootId: number }[] = [];
+  for (const s of shows) {
+    if (s.eligible) continue;
+    let cur: Show | undefined = s;
+    for (let hops = 0; cur && !cur.eligible && hops < 40; hops++) cur = cur.parentId != null ? byId.get(cur.parentId) : undefined;
+    if (!cur?.eligible) continue;
+    for (const title of [s.titleRomaji, s.titleEnglish, ...s.synonyms]) {
+      if (title && LATIN.test(title)) out.push({ title, rootId: cur.id });
+    }
+  }
+  return out;
+}
+
+function cleanOverride(o: ShowOverride): ShowOverride | null {
+  const out: ShowOverride = {};
+  if (typeof o.title === 'string' && o.title.trim()) out.title = o.title.trim().slice(0, 200);
+  if (Array.isArray(o.altTitles)) out.altTitles = [...new Set(o.altTitles.map((a) => String(a).trim()).filter(Boolean))].slice(0, 30);
+  if (o.year === null || (typeof o.year === 'number' && o.year > 1800 && o.year < 3000)) out.year = o.year === null ? null : Math.round(o.year);
+  if (o.format && ['TV', 'TV_SHORT', 'MOVIE'].includes(o.format)) out.format = o.format;
+  if (o.cover === null || typeof o.cover === 'string') out.cover = o.cover?.trim() || null;
+  if (o.release === null || (o.release && ['released', 'airing', 'upcoming'].includes(o.release))) out.release = o.release;
+  if (o.split) out.split = true;
+  return Object.keys(out).length ? out : null;
+}
 
 export class Catalogs extends EventEmitter<{
   /** the selected catalog changed (another one picked, updated, edited) */
@@ -60,6 +93,11 @@ export class Catalogs extends EventEmitter<{
   readonly games: CatalogStore;
   readonly covers: CoverResolver;
   private customs = new Map<string, CustomCatalog>();
+  /** titles the streamer added to a built-in catalog (one small file each) */
+  private additions = new Map<BuiltIn, CustomCatalog>();
+  private overrides: Map<number, ShowOverride> = new Map();
+  private overlays = new Map<BuiltIn, { base: Show[]; extra: Show[]; v: number; out: Show[]; sequels: { title: string; rootId: number }[] }>();
+  private overrideVersion = 0;
   private customDir: string;
   private patched = new WeakSet<Show[]>();
 
@@ -71,6 +109,9 @@ export class Catalogs extends EventEmitter<{
       setSelected: (id: string) => void;
       /** hand-made extra shows that belong with the anime catalog */
       animeExtras: () => Show[];
+      /** the streamer's edits to built-in catalog titles */
+      overrides: () => Map<number, ShowOverride>;
+      saveOverride: (showId: number, o: ShowOverride | null) => void;
     }
   ) {
     super();
@@ -87,6 +128,11 @@ export class Catalogs extends EventEmitter<{
     this.anime.init();
     this.screen.init();
     this.games.init();
+    this.overrides = this.opts.overrides();
+    for (const b of BUILT_IN) {
+      const file = path.join(this.customDir, `builtin-${b.id}.db`);
+      if (existsSync(file)) this.attachAdditions(b.id, new CustomCatalog(file));
+    }
     for (const f of readdirSync(this.customDir)) {
       if (!/^custom-\d+\.db$/.test(f)) continue;
       try {
@@ -151,7 +197,14 @@ export class Catalogs extends EventEmitter<{
   }
 
   sequelAliases(): { title: string; rootId: number }[] {
-    return this.selectedId() === 'anime' ? this.anime.sequelAliases() : [];
+    return this.sequelsOf(this.selectedId());
+  }
+
+  /** Sequel titles pointing at their franchise root (anime), with the streamer's splits applied. */
+  sequelsOf(id: string): { title: string; rootId: number }[] {
+    if (id !== 'anime') return [];
+    this.showsOf('anime');
+    return this.overlays.get('anime')!.sequels;
   }
 
   get status(): UpdateStatus {
@@ -161,7 +214,7 @@ export class Catalogs extends EventEmitter<{
 
   /** A title by id from whichever catalog it belongs to (past tournaments, other catalogs). */
   lookup(id: number): Show | undefined {
-    const where = isImdbId(id) ? 'screen' : isGameId(id) ? 'games' : isCustomId(id) ? `custom-${customNumberOf(id)}` : 'anime';
+    const where = isImdbId(id) ? 'screen' : isGameId(id) ? 'games' : isCustomId(id) ? this.ownerOfCustom(customNumberOf(id)) : 'anime';
     if (!this.has(where)) return undefined;
     return this.showsOf(where).find((s) => s.id === id);
   }
@@ -179,18 +232,90 @@ export class Catalogs extends EventEmitter<{
   }
 
   showsOf(id: string): Show[] {
-    if (id === 'anime') return [...this.anime.all(), ...this.opts.animeExtras()];
+    if (!isBuiltIn(id)) return this.custom(id).all();
+    let base: Show[];
     if (id === 'screen') {
-      const list = this.screen.all();
-      if (!this.patched.has(list)) {
+      base = this.screen.all();
+      if (!this.patched.has(base)) {
         // a fresh load: put the posters found so far back on
-        for (const s of list) s.coverImage ??= this.covers.get(s.id);
-        this.patched.add(list);
+        for (const s of base) s.coverImage ??= this.covers.get(s.id);
+        this.patched.add(base);
       }
-      return list;
+    } else base = id === 'anime' ? this.anime.all() : this.games.all();
+    const handMade = id === 'anime' ? this.opts.animeExtras() : [];
+    const added = this.additions.get(id)?.all() ?? [];
+    return this.overlay(id, base, handMade, added);
+  }
+
+  /**
+   * A built-in catalog with the streamer's changes on top. Untouched titles
+   * stay the very same objects (posters found later land on them).
+   */
+  private overlay(id: BuiltIn, base: Show[], handMade: Show[], added: Show[]): Show[] {
+    const cached = this.overlays.get(id);
+    const extra = added; // CustomCatalog keeps one array until it changes
+    if (cached && cached.base === base && cached.extra === extra && cached.v === this.overrideVersion) return cached.out;
+    const ov = this.overrides;
+    const apply = (s: Show): Show => {
+      const o = ov.get(s.id);
+      if (!o) return s;
+      const alts = o.altTitles;
+      return {
+        ...s,
+        titleRomaji: o.title?.trim() || s.titleRomaji,
+        titleEnglish: alts ? (alts[0] ?? null) : s.titleEnglish,
+        synonyms: alts ? alts.slice(1) : s.synonyms,
+        startYear: o.year !== undefined ? o.year : s.startYear,
+        format: o.format ?? s.format,
+        coverImage: o.cover !== undefined ? o.cover : s.coverImage,
+        release: o.release !== undefined ? o.release : s.release,
+        eligible: s.eligible || !!o.split,
+        split: !!o.split && !s.eligible,
+        edited: Object.keys(o).some((k) => k !== 'split'),
+      };
+    };
+    const out = [...base.map(apply), ...handMade.map(apply), ...added.map((s) => ({ ...apply(s), added: true }))];
+    this.overlays.set(id, { base, extra, v: this.overrideVersion, out, sequels: id === 'anime' ? sequelAliasesOf(out) : [] });
+    return out;
+  }
+
+  /** Change a built-in catalog title; null puts it back as the catalog has it. */
+  setOverride(showId: number, o: ShowOverride | null) {
+    const clean = o ? cleanOverride(o) : null;
+    this.opts.saveOverride(showId, clean);
+    if (clean) this.overrides.set(showId, clean);
+    else this.overrides.delete(showId);
+    this.overrideVersion++;
+    const where = isImdbId(showId) ? 'screen' : isGameId(showId) ? 'games' : isCustomId(showId) ? this.ownerOfCustom(customNumberOf(showId)) : 'anime';
+    this.onCatalogChanged(where);
+  }
+
+  /** Count a sequel on its own (or back with its franchise), keeping any other edits. */
+  setSplit(showId: number, on: boolean) {
+    const { split: _, ...rest } = this.overrides.get(showId) ?? {};
+    this.setOverride(showId, on ? { ...rest, split: true } : rest);
+  }
+
+  /** Where entries of a catalog are added and edited: a custom catalog itself, or a built-in's additions. */
+  editable(id: string): CustomCatalog {
+    if (!isBuiltIn(id)) return this.custom(id);
+    let c = this.additions.get(id);
+    if (!c) {
+      c = new CustomCatalog(path.join(this.customDir, `builtin-${id}.db`), { number: ADDITIONS_NUMBER[id], name: `${this.nameOf(id)} additions` });
+      this.attachAdditions(id, c);
     }
-    if (id === 'games') return this.games.all();
-    return this.custom(id).all();
+    return c;
+  }
+
+  private attachAdditions(id: BuiltIn, c: CustomCatalog) {
+    this.additions.set(id, c);
+    c.on('changed', () => this.onCatalogChanged(id));
+  }
+
+  /** custom-N, or the built-in catalog whose additions use that number */
+  private ownerOfCustom(n: number): string {
+    const b = BUILT_IN.find((x) => ADDITIONS_NUMBER[x.id] === n);
+    return b ? b.id : `custom-${n}`;
   }
 
   list(): CatalogSummary[] {

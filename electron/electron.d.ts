@@ -26,6 +26,29 @@ declare global {
     /** null when the catalog predates release status (update it) */
     release: ShowRelease | null;
     custom?: boolean;
+    /** changed by the streamer (built-in catalogs) */
+    edited?: boolean;
+    /** a sequel the streamer made its own entry (e.g. Boruto out of Naruto) */
+    split?: boolean;
+    /** added by the streamer to a built-in catalog */
+    added?: boolean;
+  };
+
+  /**
+   * The streamer's changes to a built-in catalog title. Kept apart from the
+   * catalog file, so they survive every update.
+   */
+  type ShowOverride = {
+    title?: string;
+    /** replaces the other names (the first one shows as the subtitle) */
+    altTitles?: string[];
+    year?: number | null;
+    format?: ShowFormat;
+    /** null = no cover */
+    cover?: string | null;
+    release?: ShowRelease | null;
+    /** a sequel that counts on its own instead of for its franchise */
+    split?: boolean;
   };
 
   // ------------------------------------------------------------ catalogs
@@ -526,6 +549,10 @@ declare global {
         setLabels: (id: string, labels: Partial<Record<ShowFormat, string>>) => Promise<void>;
         entries: (id: string) => Promise<Show[]>;
         addEntry: (id: string, entry: CustomEntryInput) => Promise<Show>;
+        /** change a built-in catalog title (null = back to the catalog's own data) */
+        override: (showId: number, o: ShowOverride | null) => Promise<void>;
+        /** make a sequel its own entry (or back to its franchise); other edits stay */
+        split: (showId: number, on: boolean) => Promise<void>;
         updateEntry: (id: string, showId: number, entry: CustomEntryInput) => Promise<void>;
         removeEntry: (id: string, showId: number) => Promise<void>;
         /** search any catalog (to copy titles into a custom one) */

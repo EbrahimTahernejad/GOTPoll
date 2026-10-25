@@ -144,6 +144,8 @@ if (isDev) {
       else if (a.type === 'select') out = catalog.select(a.id);
       else if (a.type === 'update') void catalog.update(a.id).catch(() => {});
       else if (a.type === 'remove') out = catalog.remove(a.id);
+      else if (a.type === 'split') out = catalog.setSplit(a.showId, a.on);
+      else if (a.type === 'override') out = catalog.setOverride(a.showId, a.o);
       res.json({ out: out ?? null, list: catalog.list().map((c) => ({ id: c.id, name: c.name, count: c.count, selected: c.selected, installed: c.installed, status: c.status })) });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });

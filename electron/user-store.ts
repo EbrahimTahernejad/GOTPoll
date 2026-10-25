@@ -76,6 +76,7 @@ export class UserStore {
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS tournaments (id TEXT PRIMARY KEY, finished_at INTEGER NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS overrides (show_id INTEGER PRIMARY KEY, data TEXT NOT NULL, updated_at INTEGER NOT NULL);
     `);
     this.migrateFromGotPoll(path.join(dir, 'shows.db'));
   }
@@ -171,6 +172,25 @@ export class UserStore {
   saveState(key: string, value: unknown) {
     if (value === null || value === undefined) this.db.prepare('DELETE FROM state WHERE key = ?').run(key);
     else this.db.prepare('INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)').run(key, JSON.stringify(value));
+  }
+
+  /** The streamer's edits to built-in catalog titles. */
+  overrides(): Map<number, ShowOverride> {
+    const rows = this.db.prepare('SELECT show_id, data FROM overrides').all() as { show_id: number; data: string }[];
+    const out = new Map<number, ShowOverride>();
+    for (const r of rows) {
+      try {
+        out.set(r.show_id, JSON.parse(r.data));
+      } catch {
+        // unreadable row – skip it
+      }
+    }
+    return out;
+  }
+
+  setOverride(showId: number, o: ShowOverride | null) {
+    if (!o || !Object.keys(o).length) this.db.prepare('DELETE FROM overrides WHERE show_id = ?').run(showId);
+    else this.db.prepare('INSERT OR REPLACE INTO overrides (show_id, data, updated_at) VALUES (?, ?, ?)').run(showId, JSON.stringify(o), Date.now());
   }
 
   /** Finished tournaments, newest first. */
