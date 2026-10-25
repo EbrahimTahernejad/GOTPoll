@@ -64,10 +64,11 @@ export function channelsOf(sources: ChannelState[]): PublicChannel[] {
   }));
 }
 
-/** The title's page at its source (AniList, IMDb, Wikidata); null for custom entries. */
+/** The title's page at its source (AniList, IMDb, Wikidata, Steam); null for custom entries and IGDB-only games. */
 export function sourceUrl(id: number): string | null {
   if (id > 0 && id < 1_000_000_000) return `https://anilist.co/anime/${id}`;
   if (id >= 1_000_000_000 && id < 2_000_000_000) return `https://www.imdb.com/title/tt${String(id - 1_000_000_000).padStart(7, '0')}/`;
-  if (id >= 3_000_000_000 && id < 4_000_000_000) return `https://www.wikidata.org/wiki/Q${id - 3_000_000_000}`;
+  if (id >= 3_800_000_000 && id < 3_900_000_000) return `https://store.steampowered.com/app/${id - 3_800_000_000}`;
+  if (id >= 3_000_000_000 && id < 3_800_000_000) return `https://www.wikidata.org/wiki/Q${id - 3_000_000_000}`;
   return null;
 }

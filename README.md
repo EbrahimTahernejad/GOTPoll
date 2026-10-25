@@ -67,6 +67,20 @@ Settings → **Local AI** sets up smarter matching with open models that run on 
 
 `pnpm bench:strategies -- --llm qwen-3b` compares the strategies on the same data as `pnpm bench:matching`.
 
+## Catalogs
+
+Settings → **Catalogs**. All free; only IGDB uses a key, and it's optional.
+
+| | source |
+|---|---|
+| Anime | AniList (a copy ships with the app) |
+| Movies & series | IMDb's free datasets (titles with 2,500+ votes) |
+| Games | Wikidata (articles in 4+ Wikipedias), Steam's most-owned games (SteamSpy), box art from Wikipedia, merged into one list. Optional: paste a free Twitch developer app's client id and secret to add IGDB's games, names and covers. The keys stay on this computer. |
+| Your own | built in the app; any number |
+
+- **Pooling**: tick several catalogs on the Poll screen or in the tournament setup. Each one gets its own format and release chips, e.g. only movies from IMDb plus only movies from AniList.
+- **Editing**: in the Library, fix any title or add missing ones, and split a sequel into its own entry (Boruto out of Naruto). Edits live in `user.db` and survive catalog updates.
+
 ## Catalog updates (in-app)
 
 Use Settings → Catalog → **Update from AniList**. It takes about 2–3 minutes and makes about 65 requests under AniList's 30-per-minute limit.

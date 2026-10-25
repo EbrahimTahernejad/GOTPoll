@@ -27,7 +27,7 @@ function seed(dir) {
   return file;
 }
 
-function catalogs(dir, saved = new Map()) {
+function catalogs(dir, saved = new Map(), extra = {}) {
   let selected = 'anime';
   const c = new Catalogs(dir, seed(dir), {
     selected: () => selected,
@@ -35,6 +35,7 @@ function catalogs(dir, saved = new Map()) {
     animeExtras: () => [],
     overrides: () => new Map(saved),
     saveOverride: (id, o) => (o ? saved.set(id, o) : saved.delete(id)),
+    ...extra,
   });
   c.init();
   return c;
@@ -124,10 +125,10 @@ test('movies & series: nothing until imported, then votes-filtered titles with t
   assert.equal(imdbSource.id, 'imdb');
 });
 
-test('games: sliced Wikidata import, names, Steam covers, other names in batches', async () => {
-  const { GAME_ID_BASE } = await import('../build/electron/catalog/games.js');
+test('games: Wikidata slices and names, Wikipedia box art, Steam and IGDB merged in', async () => {
+  const { GAME_ID_BASE, STEAM_ID_BASE, IGDB_ID_BASE } = await import('../build/electron/catalog/games.js');
   const dir = tmp();
-  const c = catalogs(dir);
+  const c = catalogs(dir, new Map(), { igdbKeys: () => ({ clientId: 'id', clientSecret: 'secret' }) });
   assert.equal(c.list().find((x) => x.id === 'games').installed, false);
   // 3000 fake games spread over the popularity slices; a few edge cases
   const games = Array.from({ length: 3000 }, (_, i) => ({
@@ -136,15 +137,67 @@ test('games: sliced Wikidata import, names, Steam covers, other names in batches
     sl: 8 + (i % 40),
     date: i === 3 ? `${YEAR + 1}-01-01T00:00:00Z` : '2017-02-24T00:00:00Z',
     steam: i % 2 === 0 ? String(10 + i) : null,
+    article: i === 0 ? 'https://en.wikipedia.org/wiki/Elden_Ring' : i === 6 ? 'https://en.wikipedia.org/wiki/Game_6' : null,
+    igdb: i === 0 ? 'elden-ring' : null,
   }));
   let aliasCalls = 0;
-  const fetchImpl = async (_url, init) => {
+  const steamPages = [];
+  const json = (v) => new Response(JSON.stringify(v), { headers: { 'content-type': 'application/json' } });
+  const fetchImpl = async (url, init = {}) => {
+    url = String(url);
+    if (url.startsWith('https://en.wikipedia.org/')) {
+      const titles = new URL(url).searchParams.get('titles').split('|');
+      assert.deepEqual(titles.sort(), ['Elden Ring', 'Game 6']);
+      return json({
+        query: {
+          pages: [
+            { title: 'Elden Ring', thumbnail: { source: 'https://upload.wikimedia.org/er.jpg?utm_source=x', width: 273, height: 364 } },
+            // a landscape logo is no cover
+            { title: 'Game 6', thumbnail: { source: 'https://upload.wikimedia.org/logo.png', width: 400, height: 100 } },
+          ],
+        },
+      });
+    }
+    if (url.startsWith('https://steamspy.com/')) {
+      const page = Number(new URL(url).searchParams.get('page'));
+      steamPages.push(page);
+      if (page > 0) return json({});
+      return json({
+        10: { appid: 10, name: 'ELDEN RING', positive: 900000 },
+        999: { appid: 999, name: 'Stardew Valley', positive: 500000 },
+        998: { appid: 998, name: 'Tiny', positive: 50 },
+        997: { appid: 997, name: 'Game 5', positive: 5000 },
+        9996: { appid: 9996, name: 'GAME 7: REMASTERED', positive: 3000 },
+        995: { appid: 995, name: 'Wallpaper Engine', positive: 900000 },
+      });
+    }
+    if (url.startsWith('https://id.twitch.tv/')) return json({ access_token: 'tok' });
+    if (url.startsWith('https://api.igdb.com/')) {
+      assert.equal(init.headers['Client-ID'], 'id');
+      if (!/offset 0;/.test(init.body)) return json([]);
+      return json([
+        { id: 5, name: 'Elden Ring', slug: 'elden-ring', alternative_names: [{ name: 'ER Tarnished' }], cover: { image_id: 'er1' }, total_rating_count: 3000 },
+        { id: 77, name: 'Celeste', slug: 'celeste', first_release_date: 1516924800, cover: { image_id: 'cel' }, total_rating_count: 1500 },
+        { id: 78, name: 'Stardew Valley', external_games: [{ url: 'https://store.steampowered.com/app/999' }], total_rating_count: 2000 },
+      ]);
+    }
     const q = new URLSearchParams(init.body).get('query');
     let bindings;
     if (q.includes('skos:altLabel')) {
       aliasCalls++;
       const ids = [...q.matchAll(/wd:Q(\d+)/g)].map((m) => Number(m[1]));
-      bindings = ids.filter((id) => id === 1000).map((id) => ({ item: { value: `http://www.wikidata.org/entity/Q${id}` }, alts: { value: 'ER|Elden|エルデンリング' } }));
+      bindings = ids.flatMap((id) => {
+        const g = games[id - 1000];
+        if (!g || (id !== 1000 && !g.article)) return [];
+        return [
+          {
+            item: { value: `http://www.wikidata.org/entity/Q${id}` },
+            ...(id === 1000 ? { alts: { value: 'ER|Elden|エルデンリング' } } : {}),
+            ...(g.article ? { w: { value: g.article } } : {}),
+            ...(g.igdb ? { g: { value: g.igdb } } : {}),
+          },
+        ];
+      });
     } else {
       const [lo, hi] = /\?sl >= (\d+) && \?sl <= (\d+)/.exec(q).slice(1).map(Number);
       bindings = games
@@ -157,21 +210,75 @@ test('games: sliced Wikidata import, names, Steam covers, other names in batches
           ...(g.steam ? { s: { value: g.steam } } : {}),
         }));
     }
-    return new Response(JSON.stringify({ results: { bindings } }), { headers: { 'content-type': 'application/json' } });
+    return json({ results: { bindings } });
   };
-  await c.games.update({ fetchImpl });
+  await c.games.update({ fetchImpl, minGapMs: 0 });
   assert.equal(c.games.status.state, 'done', JSON.stringify(c.games.status));
   c.select('games');
   const byId = new Map(c.all().map((s) => [s.id, s]));
-  assert.equal(byId.size, 2998); // a Q-id label and a non-Latin one are dropped
+  // a Q-id label and a non-Latin one are dropped; Stardew from Steam, Celeste from IGDB
+  assert.equal(byId.size, 3000);
+  assert.equal(aliasCalls, 10); // 2998 games, 300 per request
+  assert.deepEqual(steamPages, [0, 1], 'stops at the first empty page');
+
   const er = byId.get(GAME_ID_BASE + 1000);
   assert.equal(er.titleRomaji, 'Elden Ring');
-  assert.deepEqual(er.synonyms, ['ER', 'Elden']);
-  assert.match(er.coverImage, /steam\/apps\/10\/library_600x900\.jpg$/);
+  assert.deepEqual(er.synonyms, ['ER', 'Elden', 'ER Tarnished']);
+  // IGDB's cover beats the box art; Steam's reviews lift its popularity
+  assert.equal(er.coverImage, 'https://images.igdb.com/igdb/image/upload/t_cover_big/er1.jpg');
+  assert.equal(er.popularity, 24);
+  assert.match(byId.get(GAME_ID_BASE + 1004).coverImage, /steam\/apps\/14\/library_600x900\.jpg$/);
+  assert.equal(byId.get(GAME_ID_BASE + 1006).coverImage, 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/16/library_600x900.jpg');
+  // "Game 5" on Steam is Wikidata's Game 5
+  assert.match(byId.get(GAME_ID_BASE + 1005).coverImage, /apps\/997\//);
+  assert.equal(byId.get(STEAM_ID_BASE + 998), undefined, 'too few reviews');
+  assert.equal(byId.get(STEAM_ID_BASE + 995), undefined, 'not a game');
+  // a remaster on Steam is Wikidata's game, and its name becomes another way to vote for it
+  assert.equal(byId.get(STEAM_ID_BASE + 9996), undefined);
+  assert.deepEqual(byId.get(GAME_ID_BASE + 1007).synonyms, ['GAME 7: REMASTERED']);
+  const stardew = byId.get(STEAM_ID_BASE + 999);
+  assert.equal(stardew.titleRomaji, 'Stardew Valley');
+  assert.equal(byId.get(IGDB_ID_BASE + 78), undefined, 'IGDB matched it by its Steam app');
+  const celeste = byId.get(IGDB_ID_BASE + 77);
+  assert.equal(celeste.startYear, 2018);
+  assert.match(celeste.coverImage, /cel\.jpg$/);
+
   assert.equal(byId.get(GAME_ID_BASE + 1003).release, 'upcoming');
-  assert.equal(aliasCalls, 10); // 2998 games, 300 per request
   assert.deepEqual(c.info().formats, [{ id: 'TV', label: 'Game' }]);
-  assert.equal(c.lookup(GAME_ID_BASE + 1000).titleRomaji, 'Elden Ring');
+  assert.equal(c.lookup(STEAM_ID_BASE + 999).titleRomaji, 'Stardew Valley');
+});
+
+test('games: Wikipedia box art when there is no IGDB cover', async () => {
+  const dir = tmp();
+  const c = catalogs(dir);
+  const json = (v) => new Response(JSON.stringify(v), { headers: { 'content-type': 'application/json' } });
+  const fetchImpl = async (url, init = {}) => {
+    url = String(url);
+    if (url.startsWith('https://en.wikipedia.org/'))
+      return json({
+        query: {
+          normalized: [{ from: 'Hollow_Knight', to: 'Hollow Knight' }],
+          pages: [{ title: 'Hollow Knight', thumbnail: { source: 'https://upload.wikimedia.org/hk.jpg?utm=1', width: 316, height: 316 } }],
+        },
+      });
+    // Steam being down never fails the import
+    if (url.startsWith('https://steamspy.com/')) return new Response('', { status: 503 });
+    const q = new URLSearchParams(init.body).get('query');
+    if (q.includes('skos:altLabel'))
+      return json({ results: { bindings: q.includes('wd:Q5 ') ? [{ item: { value: 'http://www.wikidata.org/entity/Q5' }, w: { value: 'https://en.wikipedia.org/wiki/Hollow_Knight' } }] : [] } });
+    const lo = Number(/\?sl >= (\d+)/.exec(q)[1]);
+    const bindings =
+      lo === 8
+        ? [{ item: { value: 'http://www.wikidata.org/entity/Q5' }, itemLabel: { value: 'Hollow Knight' }, sl: { value: '9' }, s: { value: '367520' } }]
+        : lo === 4
+          ? // enough games for the importer to trust the list
+            Array.from({ length: 2000 }, (_, i) => ({ item: { value: `http://www.wikidata.org/entity/Q${100 + i}` }, itemLabel: { value: `Filler ${i}` }, sl: { value: '4' } }))
+          : [];
+    return json({ results: { bindings } });
+  };
+  await c.games.update({ fetchImpl, minGapMs: 0 });
+  assert.equal(c.games.status.state, 'done', JSON.stringify(c.games.status));
+  assert.equal(c.lookup(3_000_000_005).coverImage, 'https://upload.wikimedia.org/hk.jpg');
 });
 
 test('built-in catalogs: split a sequel out, edit a title, add one – kept apart from the catalog file', () => {

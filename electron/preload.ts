@@ -45,6 +45,7 @@ const api: Window['GOTPoll'] = {
     updateEntry: (id, showId, entry) => invoke('catalogs:updateEntry', id, showId, entry),
     removeEntry: (id, showId) => invoke('catalogs:removeEntry', id, showId),
     search: (id, query, limit) => invoke('catalogs:search', id, query, limit),
+    checkIgdb: (clientId, clientSecret) => invoke('catalogs:checkIgdb', clientId, clientSecret),
     saveCover: (bytes, type) => invoke('catalogs:saveCover', bytes, type),
     onList: (cb) => subscribe('catalogs:list', cb),
     onCovers: (cb) => subscribe('catalogs:covers', cb),

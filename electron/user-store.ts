@@ -18,6 +18,8 @@ const DEFAULT_SETTINGS: Settings = {
   pollShortlist: [],
   tunnelProvider: 'cloudflare',
   ngrokToken: '',
+  igdbClientId: '',
+  igdbClientSecret: '',
   tunnelAutoStart: false,
   onePerViewer: false,
   catalog: 'anime',
@@ -230,6 +232,8 @@ export class UserStore {
     if (typeof stored.catalog === 'string' && /^(anime|screen|games|custom-\d+)(\+(anime|screen|games|custom-\d+))*$/.test(stored.catalog)) out.catalog = stored.catalog;
     if (stored.tunnelProvider === 'cloudflare' || stored.tunnelProvider === 'ngrok') out.tunnelProvider = stored.tunnelProvider;
     if (typeof stored.ngrokToken === 'string') out.ngrokToken = stored.ngrokToken.trim();
+    if (typeof stored.igdbClientId === 'string') out.igdbClientId = stored.igdbClientId.trim();
+    if (typeof stored.igdbClientSecret === 'string') out.igdbClientSecret = stored.igdbClientSecret.trim();
     if (typeof stored.tunnelAutoStart === 'boolean') out.tunnelAutoStart = stored.tunnelAutoStart;
     if (stored.pollFilters && Array.isArray(stored.pollFilters.formats) && Array.isArray(stored.pollFilters.release)) {
       out.pollFilters = cleanFilters(stored.pollFilters);

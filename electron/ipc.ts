@@ -1,4 +1,5 @@
 import { BrowserWindow, ipcMain, shell } from 'electron';
+import { checkIgdbKeys } from './catalog/games.js';
 import { describeChannel, testChannel } from './poll/sources/factory.js';
 import { shareInfo, startTunnel, stopTunnel, tunnel } from './sharing.js';
 import {
@@ -91,6 +92,7 @@ ipcMain.handle('catalogs:removeEntry', (_, _id: string, showId: number) => catal
 ipcMain.handle('catalogs:override', (_, showId: number, o: ShowOverride | null) => catalog.setOverride(showId, o));
 ipcMain.handle('catalogs:split', (_, showId: number, on: boolean) => catalog.setSplit(showId, on));
 ipcMain.handle('catalogs:search', (_, id: string, query: string, limit?: number) => searchIn(id, query, limit));
+ipcMain.handle('catalogs:checkIgdb', (_, clientId: string, clientSecret: string) => checkIgdbKeys({ clientId: clientId.trim(), clientSecret: clientSecret.trim() }));
 ipcMain.handle('catalogs:saveCover', (_, bytes: ArrayBuffer, type: string) => saveCover(bytes, type));
 
 // ---- poll

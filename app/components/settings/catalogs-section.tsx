@@ -9,6 +9,7 @@ import {
   Gamepad2,
   History,
   ImageUp,
+  KeyRound,
   Library,
   Loader2,
   Pencil,
@@ -31,8 +32,8 @@ import { cn } from '~/lib/utils';
 // movies & series (IMDb), and any number of custom catalogs built here.
 
 const KIND_ICON = { anilist: Sparkles, imdb: Clapperboard, games: Gamepad2, custom: Library } as const;
-const SOURCE = { anilist: 'AniList', imdb: 'IMDb', games: 'Wikidata', custom: '' } as const;
-const SIZE = { anilist: '', imdb: ' (~240 MB)', games: ' (about a minute)', custom: '' } as const;
+const SOURCE = { anilist: 'AniList', imdb: 'IMDb', games: 'Wikidata & Steam', custom: '' } as const;
+const SIZE = { anilist: '', imdb: ' (~240 MB)', games: ' (about 6 minutes)', custom: '' } as const;
 const BUSY = ['running', 'validating', 'applying'];
 
 /** Run an IPC call; Electron wraps thrown messages, unwrap them for people. */
@@ -159,7 +160,7 @@ function CatalogCard({
       : c.kind === 'imdb'
         ? 'Movies, series and mini-series from IMDb’s free data – the ones with at least 2,500 votes.'
         : c.kind === 'games'
-          ? 'Video games from Wikidata – the ones with articles in 8+ Wikipedias. Covers from Steam where there is one.'
+          ? 'Video games from Wikidata (articles in 4+ Wikipedias) and Steam’s most-owned, merged – box art from Wikipedia and Steam. Add free IGDB keys for more games and names.'
           : 'Your own list, edited here.';
 
   return (
@@ -209,7 +210,7 @@ function CatalogCard({
             }
             onClick={() => attempt(() => window.GOTPoll.catalogs.select(c.id), onError)}
           >
-            <Check className="h-3.5 w-3.5" /> Use this catalog
+            <Check className="h-3.5 w-3.5" /> Use only this catalog
           </Button>
         )}
         {c.kind !== 'custom' &&
@@ -239,6 +240,8 @@ function CatalogCard({
           </>
         )}
       </div>
+
+      {c.kind === 'games' && <IgdbKeys onError={onError} />}
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>
@@ -746,5 +749,64 @@ function Thumb({ src, className }: { src: string | null; className?: string }) {
     <img src={src} alt="" onError={(e) => (e.currentTarget.style.visibility = 'hidden')} className={cn('bg-muted shrink-0 rounded object-cover', className)} />
   ) : (
     <div className={cn('bg-muted shrink-0 rounded', className)} />
+  );
+}
+
+/**
+ * Optional IGDB keys for the Games catalog: a free Twitch developer app's
+ * client id and secret. Kept in the local settings only; never required.
+ */
+function IgdbKeys({ onError }: { onError: (m: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [id, setId] = useState('');
+  const [secret, setSecret] = useState('');
+  const [saved, setSaved] = useState<{ id: string; secret: string }>({ id: '', secret: '' });
+  const [state, setState] = useState<'idle' | 'checking' | 'ok'>('idle');
+  useEffect(() => {
+    window.GOTPoll.settings.get().then((s) => {
+      setId(s.igdbClientId);
+      setSecret(s.igdbClientSecret);
+      setSaved({ id: s.igdbClientId, secret: s.igdbClientSecret });
+    });
+  }, []);
+  const has = !!(saved.id && saved.secret);
+  const save = async () => {
+    setState('checking');
+    if (id.trim() && secret.trim()) {
+      const ok = await attempt(() => window.GOTPoll.catalogs.checkIgdb(id, secret).then(() => true), onError);
+      if (!ok) return setState('idle');
+    }
+    await window.GOTPoll.settings.set({ igdbClientId: id.trim(), igdbClientSecret: secret.trim() });
+    setSaved({ id: id.trim(), secret: secret.trim() });
+    setState(id.trim() ? 'ok' : 'idle');
+  };
+
+  return (
+    <div className="mt-3 border-t pt-3 text-xs">
+      <button className="text-muted-foreground hover:text-foreground flex items-center gap-1.5" onClick={() => setOpen(!open)}>
+        <KeyRound className="h-3.5 w-3.5" />
+        IGDB keys (optional) · {has ? <span className="text-emerald-600 dark:text-emerald-400">added – used on the next update</span> : 'not added'}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          <p className="text-muted-foreground">
+            Free: make an app at{' '}
+            <button className="underline" onClick={() => window.GOTPoll.openExternal('https://dev.twitch.tv/console/apps')}>
+              dev.twitch.tv
+            </button>{' '}
+            (category “Application Integration”, any redirect URL) and paste its client id and a new secret. They stay on this computer.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input value={id} onChange={(e) => setId(e.target.value)} placeholder="Client ID" className="h-8 w-56 font-mono text-xs" />
+            <Input value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="Client secret" type="password" className="h-8 w-56 font-mono text-xs" />
+            <Button size="sm" variant="outline" disabled={state === 'checking' || (id === saved.id && secret === saved.secret)} onClick={save}>
+              {state === 'checking' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              {id.trim() || !has ? 'Check & save' : 'Remove'}
+            </Button>
+            {state === 'ok' && <span className="text-emerald-600 dark:text-emerald-400">Keys work</span>}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

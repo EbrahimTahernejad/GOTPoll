@@ -54,7 +54,7 @@ declare global {
   // ------------------------------------------------------------ catalogs
   //   anilist  the anime catalog (AniList)
   //   imdb     movies & series (IMDb's free datasets)
-  //   games    video games (Wikidata)
+  //   games    video games (Wikidata, Wikipedia, Steam; IGDB with the streamer's keys)
   //   custom   built by the streamer in the app – any number of them
   type CatalogKind = 'anilist' | 'imdb' | 'games' | 'custom';
 
@@ -482,6 +482,9 @@ declare global {
     tunnelProvider: TunnelProvider;
     /** the streamer's own ngrok authtoken; stays in the local settings db */
     ngrokToken: string;
+    /** optional free IGDB keys (a Twitch developer app) for the Games catalog; stay in the local settings db */
+    igdbClientId: string;
+    igdbClientSecret: string;
     /** open the public link when the app starts */
     tunnelAutoStart: boolean;
     /** shown on the app and the viewer page */
@@ -566,6 +569,8 @@ declare global {
         removeEntry: (id: string, showId: number) => Promise<void>;
         /** search any catalog (to copy titles into a custom one) */
         search: (id: string, query: string, limit?: number) => Promise<SearchHit[]>;
+        /** do these IGDB keys work? rejects with the reason */
+        checkIgdb: (clientId: string, clientSecret: string) => Promise<void>;
         /** keep an image file for a cover; returns its URL */
         saveCover: (bytes: ArrayBuffer, type: string) => Promise<string>;
         onList: (cb: (list: CatalogSummary[]) => void) => () => void;

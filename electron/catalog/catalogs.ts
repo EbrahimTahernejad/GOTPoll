@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { CoverResolver } from './covers.js';
 import { CustomCatalog, customNumberOf, isCustomId } from './custom.js';
-import { GAME_FORMATS, gamesSource, isGameId } from './games.js';
+import { GAME_FORMATS, isGameId, makeGamesSource, type IgdbKeys } from './games.js';
 import { IMDB_FORMATS, imdbSource, isImdbId } from './imdb.js';
 import { CatalogStore, type CatalogInfo, type UpdateStatus } from './store.js';
 
@@ -13,7 +13,7 @@ import { CatalogStore, type CatalogInfo, type UpdateStatus } from './store.js';
 //
 //   anime    AniList – bundled copy, updates in the app
 //   screen   Movies & series – IMDb's free datasets, imported in the app
-//   games    Video games – Wikidata, imported in the app
+//   games    Video games – Wikidata, Wikipedia, Steam (+ IGDB with the streamer's keys), imported in the app
 //   custom-N the streamer's own, built in the app (any number of them)
 //
 // Several can be in use at once ("anime+screen"): their titles are pooled,
@@ -124,13 +124,15 @@ export class Catalogs extends EventEmitter<{
       /** the streamer's edits to built-in catalog titles */
       overrides: () => Map<number, ShowOverride>;
       saveOverride: (showId: number, o: ShowOverride | null) => void;
+      /** the streamer's own free IGDB (Twitch developer) keys, if they added them */
+      igdbKeys?: () => IgdbKeys | null;
     }
   ) {
     super();
     this.anime = new CatalogStore(path.join(userData, 'catalog'), seedPath);
     const dir = path.join(userData, 'catalogs');
     this.screen = new CatalogStore(path.join(dir, 'screen'), null, 5000, imdbSource);
-    this.games = new CatalogStore(path.join(dir, 'games'), null, 2000, gamesSource);
+    this.games = new CatalogStore(path.join(dir, 'games'), null, 2000, makeGamesSource(opts.igdbKeys));
     this.customDir = path.join(dir, 'custom');
     mkdirSync(this.customDir, { recursive: true });
     this.covers = new CoverResolver(path.join(dir, 'covers.db'));

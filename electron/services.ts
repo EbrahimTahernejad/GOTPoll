@@ -27,6 +27,10 @@ export const catalog = new Catalogs(userData, path.resolve(dirname, '../assets/s
   animeExtras: () => user.customShows(),
   overrides: () => user.overrides(),
   saveOverride: (id, o) => user.setOverride(id, o),
+  igdbKeys: () => {
+    const { igdbClientId, igdbClientSecret } = user.settings();
+    return igdbClientId && igdbClientSecret ? { clientId: igdbClientId, clientSecret: igdbClientSecret } : null;
+  },
 });
 catalog.init();
 export const ai = new LocalAi(path.join(userData, 'ai'), {

@@ -133,7 +133,7 @@ export default function SettingsPage() {
               <div className="max-w-5xl space-y-4">
                 <SectionTitle
                   title="Catalogs"
-                  text="What chat votes from. Polls, matching and tournaments use the one in use – switch any time no poll or tournament is running."
+                  text="What chat votes from. Polls, matching and tournaments use the ones in use – tick several on the Poll screen to pool them. Switch any time no poll or tournament is running."
                 />
                 <CatalogsSection locked={poll.state === 'running'} />
               </div>
