@@ -143,6 +143,8 @@ export class TournamentController extends EventEmitter<{ update: [TournamentSnap
       qualifySpots: Math.max(0, t.config.size - carriedOf(t).length),
       carried: carriedOf(t).flatMap((id) => entry(id) ?? []),
       standings: rankingOf(t).slice(0, t.config.showTop).flatMap((r) => entry(r.id, r.count) ?? []),
+      allStandings: t.phase === 'open' ? [] : rankingOf(t).flatMap((r) => (r.count > 0 ? (entry(r.id, r.count) ?? []) : [])),
+      removed: (t.removed ?? []).flatMap((id) => entry(id, t.open.ranking.find((r) => r.id === id)?.count ?? 0) ?? []),
       ...this.standing(t),
       cut: t.cut ? { ...t.cut, candidates: t.cut.candidates.flatMap((id) => entry(id, t.cut!.votes) ?? []) } : null,
       coin: this.coinInfo(t, coinMatch),

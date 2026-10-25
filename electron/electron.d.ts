@@ -377,6 +377,10 @@ declare global {
     carried: PublicEntry[];
     /** frozen open-round standings, top M (live ones come in `ranking`) */
     standings: PublicEntry[];
+    /** every show that got open-round votes (for "show all" and the summary) */
+    allStandings: PublicEntry[];
+    /** struck out by the streamer */
+    removed: PublicEntry[];
     qualified: number[];
     tied: number[];
     cut: (Omit<CutTie, 'candidates'> & { candidates: PublicEntry[] }) | null;

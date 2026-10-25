@@ -1,4 +1,5 @@
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
+import { ListOrdered, ListTree } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import useLiveTime from '~/hooks/useLiveTime';
 import { matchLabel } from '~/lib/tournament';
@@ -12,6 +13,7 @@ import DrawScreen from './draw';
 import { T_COVER } from './ids';
 import IntroScreen from './intro';
 import QualifiersScreen from './qualifiers';
+import Summary from './summary';
 import ReportScreen from './report';
 
 // The viewer page while a tournament is open. Each screen is a full layer;
@@ -32,6 +34,11 @@ export default function TournamentView({
   connected: boolean;
   transparent: boolean;
 }) {
+  // people on the public link get buttons; OBS (and transparent overlays) never do
+  const [interactive] = useState(
+    () => typeof window !== 'undefined' && !('obsstudio' in window) && !transparent && !new URLSearchParams(location.search).has('clean')
+  );
+  const [summary, setSummary] = useState<null | 'top' | 'open'>(null);
   const all = [...t.rounds.flat(), ...(t.third ? [t.third] : [])];
   const focus = t.focus ? all.find((m) => m.key === t.focus) ?? null : null;
   const liveHere = !!t.live && t.live.key === t.focus;
@@ -112,6 +119,15 @@ export default function TournamentView({
           </div>
         )}
         {!connected && <span className="rounded-full bg-amber-500/20 px-3 py-1 text-[0.8vw] text-amber-300">reconnecting…</span>}
+        {interactive && (
+          <button
+            onClick={() => setSummary('top')}
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-white ring-1 ring-white/15 backdrop-blur hover:bg-white/20 sm:text-sm"
+            title="Every round so far and how it went"
+          >
+            <ListTree className="h-4 w-4" /> Summary
+          </button>
+        )}
       </header>
 
       <LayoutGroup>
@@ -146,6 +162,19 @@ export default function TournamentView({
           </motion.main>
         </AnimatePresence>
       </LayoutGroup>
+
+      {interactive && t.screen === 'open-results' && (t.allStandings.length > t.standings.length || t.removed.length > 0) && (
+        <button
+          onClick={() => setSummary('open')}
+          className="fixed right-4 bottom-4 z-30 flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-sm font-bold text-black shadow-xl hover:bg-white/90"
+        >
+          <ListOrdered className="h-4 w-4" /> Show all {t.allStandings.length}
+        </button>
+      )}
+
+      <AnimatePresence>
+        {summary && <Summary t={t} channels={snap.channels} focus={summary === 'open' ? 'open' : undefined} onClose={() => setSummary(null)} />}
+      </AnimatePresence>
     </div>
   );
 }
