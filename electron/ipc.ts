@@ -75,7 +75,7 @@ ipcMain.handle('catalogs:revert', (_, id: string) => catalog.revert(id));
 ipcMain.handle('catalogs:create', (_, name: string) => catalog.create(name));
 ipcMain.handle('catalogs:rename', (_, id: string, name: string) => catalog.custom(id).rename(name));
 ipcMain.handle('catalogs:remove', (_, id: string) => {
-  if (catalog.selectedId() === id && (poll.isRunning || tournament.snapshot().tournament)) {
+  if (catalog.partsOf(catalog.selectedId()).includes(id) && (poll.isRunning || tournament.snapshot().tournament)) {
     throw new Error('It’s in use by a running poll or tournament');
   }
   catalog.remove(id);
@@ -85,8 +85,9 @@ ipcMain.handle('catalogs:setLabels', (_, id: string, labels: Partial<Record<Show
 ipcMain.handle('catalogs:entries', (_, id: string) => catalog.showsOf(id));
 // a custom catalog's entries, or titles added to a built-in one
 ipcMain.handle('catalogs:addEntry', (_, id: string, e: CustomEntryInput) => catalog.editable(id).add(e));
-ipcMain.handle('catalogs:updateEntry', (_, id: string, showId: number, e: CustomEntryInput) => catalog.editable(id).update(showId, e));
-ipcMain.handle('catalogs:removeEntry', (_, id: string, showId: number) => catalog.editable(id).remove(showId));
+// (an entry is edited where it lives, whatever catalogs are in use)
+ipcMain.handle('catalogs:updateEntry', (_, _id: string, showId: number, e: CustomEntryInput) => catalog.editable(catalog.ownerOf(showId)).update(showId, e));
+ipcMain.handle('catalogs:removeEntry', (_, _id: string, showId: number) => catalog.editable(catalog.ownerOf(showId)).remove(showId));
 ipcMain.handle('catalogs:override', (_, showId: number, o: ShowOverride | null) => catalog.setOverride(showId, o));
 ipcMain.handle('catalogs:split', (_, showId: number, on: boolean) => catalog.setSplit(showId, on));
 ipcMain.handle('catalogs:search', (_, id: string, query: string, limit?: number) => searchIn(id, query, limit));

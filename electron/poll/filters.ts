@@ -1,6 +1,15 @@
 // Poll filters, kept dependency-free so the engine stays testable in plain Node.
 
 export function cleanFilters(f: PollFilters): PollFilters {
+  const out = cleanGroup(f);
+  if (f.byCatalog && typeof f.byCatalog === 'object') {
+    const by = Object.entries(f.byCatalog).filter(([id, g]) => /^[\w-]{1,40}$/.test(id) && g && typeof g === 'object');
+    if (by.length) return { ...out, byCatalog: Object.fromEntries(by.map(([id, g]) => [id, cleanGroup(g)])) };
+  }
+  return out;
+}
+
+function cleanGroup(f: Omit<PollFilters, 'byCatalog'>): Omit<PollFilters, 'byCatalog'> {
   const formats = (['TV', 'TV_SHORT', 'MOVIE'] as const).filter((x) => f.formats?.includes(x));
   const release = (['released', 'airing', 'upcoming'] as const).filter((x) => f.release?.includes(x));
   // an empty group would make every show uncountable – treat it as "all"

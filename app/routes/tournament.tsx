@@ -48,6 +48,8 @@ import {
 import { Input } from '~/components/ui/input';
 import useLiveTime from '~/hooks/useLiveTime';
 import useCatalog from '~/hooks/useCatalog';
+import useCatalogs from '~/hooks/useCatalogs';
+import { CatalogPicker, PartFilters } from '~/components/poll/catalog-filters';
 import useLibrary from '~/hooks/useLibrary';
 import usePoll from '~/hooks/usePoll';
 import useTournament from '~/hooks/useTournament';
@@ -300,11 +302,12 @@ function Setup({
 }) {
   const d = snap.draft;
   const { info: catalogInfo } = useCatalog();
+  const catalogs = useCatalogs();
   const [title, setTitle] = useState(d.title);
   useEffect(() => setTitle(d.title), [d.title]);
   const set = (patch: Partial<TournamentConfig>) => act({ type: 'draft', patch });
   const spots = d.size - d.carried.length;
-  const toggle = <K extends keyof PollFilters>(key: K, value: PollFilters[K][number]) => {
+  const toggle = <K extends 'formats' | 'release'>(key: K, value: PollFilters[K][number]) => {
     const list = d.filters[key] as string[];
     const next = list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
     if (next.length) void set({ filters: { ...d.filters, [key]: next } });
@@ -359,6 +362,10 @@ function Setup({
               Play for third
             </FilterChip>
           </FilterGroup>
+          <CatalogPicker catalogs={catalogs} lockedTitle="" />
+          {(catalogInfo?.parts.length ?? 1) > 1 ? (
+            catalogInfo!.parts.map((p) => <PartFilters key={p.id} part={p} filters={d.filters} onChange={(filters) => void set({ filters })} />)
+          ) : (
           <FilterGroup label={`Open round counts · ${catalogInfo?.name ?? ''}`}>
             {(catalogInfo?.formats ?? FORMATS).map((f) => (
               <FilterChip key={f.id} on={d.filters.formats.includes(f.id)} onClick={() => toggle('formats', f.id)}>
@@ -372,6 +379,7 @@ function Setup({
               </FilterChip>
             ))}
           </FilterGroup>
+          )}
         </div>
 
         <div className="space-y-2">

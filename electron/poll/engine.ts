@@ -4,7 +4,10 @@ import { cleanMessage } from '../matching/normalize.js';
 /** What the engine needs from a catalog (the selected one, in the app). */
 export type CatalogLike = {
   all(): Show[];
-  info(): { file: string; hasRelease: boolean; name?: string; kind?: CatalogKind; popularityFloor?: number };
+  info(): { file: string; hasRelease: boolean; name?: string; kind?: CatalogKind; popularityFloor?: number; parts?: { id: string }[] };
+  /** several catalogs pooled: which one a title is from, and its chatter floor */
+  ownerOf?(showId: number): string;
+  floorFor?(showId: number): number;
   sequelAliases(): { title: string; rootId: number }[];
   on(event: 'changed', cb: () => void): unknown;
   /** a title from any catalog by id (past tournaments) */
@@ -52,6 +55,8 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
   /** shortlist polls: a forgiving matcher that only knows the options */
   private optionMatcher: Matcher | null = null;
   private releaseKnown = true;
+  /** several catalogs in use – filters apply per catalog */
+  private pooled = false;
   private messages = 0;
   private version = 0;
 
@@ -144,8 +149,12 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     this.releaseKnown = this.catalog.info().hasRelease;
     this.shows = new Map(pool.map((s) => [s.id, s]));
     this.catalogVersionAtStart = this.catalog.info().file;
+    this.pooled = (this.catalog.info().parts?.length ?? 1) > 1;
     this.matcher = new Matcher({
       minPopularityShort: this.catalog.info().popularityFloor,
+      ...(this.pooled && this.catalog.ownerOf && this.catalog.floorFor
+        ? { floorOf: (id: number) => this.catalog.floorFor!(id), groupOf: (id: number) => this.catalog.ownerOf!(id) }
+        : {}),
       shows: pool,
       sequels: this.catalog.sequelAliases().filter((s) => this.shows.has(s.rootId)),
       learned: this.user.aliases().filter((a) => this.shows.has(a.showId)).map((a) => ({ alias: a.phrase, showId: a.showId })),
@@ -575,9 +584,11 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
   private counts(show: Show) {
     if (this.exclude.has(show.id)) return false;
     if (this.mode === 'shortlist') return this.shortlist.includes(show.id);
-    if (!this.filters.formats.includes(show.format)) return false;
+    // several catalogs: each has its own chips (only movies from IMDb, only movies from AniList…)
+    const f = (this.pooled && this.filters.byCatalog?.[this.catalog.ownerOf?.(show.id) ?? '']) || this.filters;
+    if (!f.formats.includes(show.format)) return false;
     // unknown release (old catalog): can't judge – count it
-    return show.release === null || this.filters.release.includes(show.release);
+    return show.release === null || f.release.includes(show.release);
   }
 
   publicSnapshot(s = this.snapshot()): PublicSnapshot {

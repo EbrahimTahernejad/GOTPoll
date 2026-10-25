@@ -8,6 +8,7 @@ import UnmatchedPanel from '~/components/poll/unmatched-panel';
 import AppHeader from '~/components/app/app-header';
 import { EmptyState, FilterChip, FilterGroup, Source, StateBadge, Stat } from '~/components/poll/bits';
 import ShortlistEditor from '~/components/poll/shortlist-editor';
+import { CatalogPicker, PartFilters, RELEASES } from '~/components/poll/catalog-filters';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import {
@@ -31,11 +32,6 @@ const FORMATS: { id: ShowFormat; label: string }[] = [
   { id: 'TV_SHORT', label: 'Short' },
 ];
 
-const RELEASES: { id: ShowRelease; label: string; hint: string }[] = [
-  { id: 'released', label: 'Released', hint: 'At least one full season out (sequels may still be airing)' },
-  { id: 'airing', label: 'Airing', hint: 'First season still airing' },
-  { id: 'upcoming', label: 'Upcoming', hint: 'Not aired yet' },
-];
 
 export default function Home() {
   const snap = usePoll();
@@ -93,7 +89,7 @@ export default function Home() {
   };
 
   // a group can't be emptied: no shows would count
-  const toggle = <K extends keyof PollFilters>(key: K, value: PollFilters[K][number]) => {
+  const toggle = <K extends 'formats' | 'release'>(key: K, value: PollFilters[K][number]) => {
     if (!filters) return;
     const list = filters[key] as string[];
     const next = list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
@@ -158,21 +154,7 @@ export default function Home() {
 
             {filters && (
               <div className="flex flex-wrap items-start gap-x-8 gap-y-3 border-t px-4 py-3">
-                <FilterGroup label="Catalog">
-                  {catalogs
-                    .filter((c) => c.installed && (c.kind !== 'custom' || c.count > 0))
-                    .map((c) => (
-                      <FilterChip
-                        key={c.id}
-                        on={c.selected}
-                        disabled={running || tournamentOpen}
-                        title={running || tournamentOpen ? 'Switch catalogs between polls' : `Vote from ${c.name}`}
-                        onClick={() => !c.selected && window.GOTPoll.catalogs.select(c.id).catch(() => {})}
-                      >
-                        {c.name}
-                      </FilterChip>
-                    ))}
-                </FilterGroup>
+                <CatalogPicker catalogs={catalogs} disabled={running || tournamentOpen} lockedTitle="Switch catalogs between polls" />
                 <FilterGroup label="Poll">
                   <FilterChip on={shownMode === 'open'} disabled={running} onClick={() => chooseMode('open')} title="Any show in the library">
                     Open
@@ -192,6 +174,10 @@ export default function Home() {
                       <ShortlistEditor ids={options} shows={library} disabled={running} onChange={saveShortlist} />
                     </FilterGroup>
                   </div>
+                ) : (catalogInfo?.parts.length ?? 1) > 1 ? (
+                  catalogInfo!.parts.map((p) => (
+                    <PartFilters key={p.id} part={p} filters={filters} onChange={setFilters} disabled={running} />
+                  ))
                 ) : (
                 <>
                 <FilterGroup label="Format">

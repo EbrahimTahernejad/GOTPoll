@@ -523,7 +523,8 @@ export default function ShowsGrid() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_shows, ignoredShows, view, byId]);
   const sequelCount = useMemo(() => _shows.filter((s) => !s.eligible || s.split).length, [_shows]);
-  const custom = info?.kind === 'custom';
+  const pooled = (info?.parts.length ?? 1) > 1;
+  const custom = !pooled && info?.kind === 'custom';
 
   const ref = useRef<AgGridReact>(null);
 
@@ -557,7 +558,7 @@ export default function ShowsGrid() {
   const save = async (input: CustomEntryInput) => {
     if (!info) return;
     try {
-      if (editing === 'new' || custom || (editing && editing.added)) {
+      if (editing === 'new' || custom || (editing && (editing.added || editing.custom))) {
         // new titles (and ones added before) live with the catalog's additions
         if (editing === 'new') await window.GOTPoll.catalogs.addEntry(info.id, input);
         else if (editing) await window.GOTPoll.catalogs.updateEntry(info.id, editing.id, input);
@@ -606,7 +607,7 @@ export default function ShowsGrid() {
         </span>
         <div className="grow" />
         {error && <span className="text-destructive text-xs">{error}</span>}
-        {!custom && (
+        {!custom && !pooled && (
           <Button size="sm" variant="outline" onClick={() => setEditing('new')}>
             <Plus className="h-3.5 w-3.5" /> Add a title
           </Button>

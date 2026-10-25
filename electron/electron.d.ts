@@ -114,7 +114,12 @@ declare global {
   type PollState = 'idle' | 'running' | 'ended';
 
   /** which shows count in a poll – matching ignores these on purpose */
-  type PollFilters = { formats: ShowFormat[]; release: ShowRelease[] };
+  type PollFilters = {
+    formats: ShowFormat[];
+    release: ShowRelease[];
+    /** several catalogs in use: each one's own chips, by catalog id (the ones above apply to a single catalog) */
+    byCatalog?: Record<string, { formats: ShowFormat[]; release: ShowRelease[] }>;
+  };
 
   /**
    * open      – any show in the library, narrowed by filters
@@ -495,7 +500,7 @@ declare global {
     llmModel: 'auto' | 'qwen-1.5b' | 'qwen-3b' | 'qwen-7b';
     /** one vote per viewer – a new vote replaces their previous one */
     onePerViewer: boolean;
-    /** the catalog in use: 'anime', 'screen', 'games' or 'custom-N' */
+    /** the catalog in use: 'anime', 'screen', 'games' or 'custom-N' – several joined by '+' */
     catalog: string;
   };
 

@@ -227,7 +227,7 @@ export class UserStore {
     const stored = Object.fromEntries(rows.map((r) => [r.key, JSON.parse(r.value)])) as Record<string, any>;
     const out: Settings = { ...DEFAULT_SETTINGS, channels: [...DEFAULT_SETTINGS.channels] };
     if (typeof stored.onePerViewer === 'boolean') out.onePerViewer = stored.onePerViewer;
-    if (typeof stored.catalog === 'string' && /^(anime|screen|games|custom-\d+)$/.test(stored.catalog)) out.catalog = stored.catalog;
+    if (typeof stored.catalog === 'string' && /^(anime|screen|games|custom-\d+)(\+(anime|screen|games|custom-\d+))*$/.test(stored.catalog)) out.catalog = stored.catalog;
     if (stored.tunnelProvider === 'cloudflare' || stored.tunnelProvider === 'ngrok') out.tunnelProvider = stored.tunnelProvider;
     if (typeof stored.ngrokToken === 'string') out.ngrokToken = stored.ngrokToken.trim();
     if (typeof stored.tunnelAutoStart === 'boolean') out.tunnelAutoStart = stored.tunnelAutoStart;

@@ -76,6 +76,10 @@ export type MatcherOptions = {
    * votes, Wikipedias…); 0 turns the guard off.
    */
   minPopularityShort?: number;
+  /** several catalogs pooled: each title's own floor (overrides minPopularityShort) */
+  floorOf?: (showId: number) => number;
+  /** several catalogs pooled: which one a title is from, so popularity is weighed within it */
+  groupOf?: (showId: number) => string;
 };
 
 export type MatcherInput = MatcherOptions & {
@@ -86,7 +90,7 @@ export type MatcherInput = MatcherOptions & {
   sequels?: { title: string; rootId: number }[];
 };
 
-const DEFAULTS: Required<MatcherOptions> = {
+const DEFAULTS: Required<Omit<MatcherOptions, 'floorOf' | 'groupOf'>> = {
   threshold: 0.72,
   margin: 0.03,
   minPopularityShort: 5000,
@@ -121,11 +125,19 @@ export class Matcher {
   private popPrior = new Map<number, number>();
   private tokenShows = new Map<string, Set<number>>();
   private popularity = new Map<number, number>();
-  private opts: Required<MatcherOptions>;
+  private opts: Required<Omit<MatcherOptions, 'floorOf' | 'groupOf'>>;
+  private floorOf?: (showId: number) => number;
 
-  constructor({ shows, learned = [], sequels = [], ...opts }: MatcherInput) {
+  constructor({ shows, learned = [], sequels = [], floorOf, groupOf, ...opts }: MatcherInput) {
     this.opts = { ...DEFAULTS, ...opts };
-    const maxPop = Math.max(1, ...shows.map((s) => s.popularity || 0));
+    this.floorOf = floorOf;
+    // AniList users, IMDb votes and Wikipedias don't compare: weigh each title within its own catalog
+    const maxByGroup = new Map<string, number>();
+    for (const s of shows) {
+      const g = groupOf?.(s.id) ?? '';
+      maxByGroup.set(g, Math.max(maxByGroup.get(g) ?? 1, s.popularity || 0));
+    }
+    const maxPop = (id: number) => maxByGroup.get(groupOf?.(id) ?? '') ?? 1;
     const raw: Omit<Alias, 'grams'>[] = [];
     const seen = new Set<string>();
 
@@ -144,7 +156,7 @@ export class Matcher {
       // log-scaled popularity prior in [0, 1]
       this.popPrior.set(
         show.id,
-        Math.log1p(show.popularity || 0) / Math.log1p(maxPop)
+        Math.log1p(show.popularity || 0) / Math.log1p(maxPop(show.id))
       );
 
       const titles: [string | null, AliasKind][] = [
@@ -351,7 +363,11 @@ export class Matcher {
 
   /** The same "obscure show from a 1–2 word message" floor match() applies. */
   passesPopularityFloor(query: string, showId: number): boolean {
-    return query.split(' ').length > 2 || (this.popularity.get(showId) ?? 0) >= this.opts.minPopularityShort;
+    return query.split(' ').length > 2 || (this.popularity.get(showId) ?? 0) >= this.floor(showId);
+  }
+
+  private floor(showId: number) {
+    return this.floorOf ? this.floorOf(showId) : this.opts.minPopularityShort;
   }
 
   popularityOf(showId: number) {
@@ -368,7 +384,7 @@ export class Matcher {
       hit &&
       hit.stage !== 'learned' &&
       query.split(' ').length <= 2 &&
-      (this.popularity.get(hit.showId) ?? 0) < this.opts.minPopularityShort
+      (this.popularity.get(hit.showId) ?? 0) < this.floor(hit.showId)
     ) {
       return null;
     }

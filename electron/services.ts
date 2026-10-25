@@ -148,8 +148,10 @@ export function getLibrary() {
 function getSearchMatcher() {
   if (!searchMatcher) {
     const lib = getLibrary();
+    const pooled = catalog.info().parts.length > 1;
     searchMatcher = new Matcher({
       minPopularityShort: catalog.info().popularityFloor,
+      ...(pooled ? { floorOf: (id: number) => catalog.floorFor(id), groupOf: (id: number) => catalog.ownerOf(id) } : {}),
       shows: [...lib.values()],
       sequels: catalog.sequelAliases().filter((s) => lib.has(s.rootId)),
     });
@@ -180,7 +182,12 @@ export function searchIn(id: string, query: string, limit = 10): SearchHit[] {
     const shows = catalog.showsOf(id).filter((s) => s.eligible);
     entry = {
       lib: new Map(shows.map((s) => [s.id, s])),
-      matcher: new Matcher({ shows, sequels: catalog.sequelsOf(id), minPopularityShort: catalog.floorOf(id) }),
+      matcher: new Matcher({
+        shows,
+        sequels: catalog.sequelsOf(id),
+        minPopularityShort: catalog.floorOf(id),
+        ...(id.includes('+') ? { floorOf: (s: number) => catalog.floorFor(s), groupOf: (s: number) => catalog.ownerOf(s) } : {}),
+      }),
     };
     otherSearch.set(id, entry);
   }

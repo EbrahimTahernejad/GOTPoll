@@ -159,3 +159,37 @@ test('shortlist: every option shows from the start, at zero', async () => {
   assert.deepEqual(s.ranking.map((r) => [r.id, r.count, r.option]), [[2, 0, 1], [3, 0, 2]]);
   engine.stop();
 });
+
+test('several catalogs: each one filtered by its own chips, each title by its own floor', async () => {
+  const pool = [
+    S(1, 'Akira', null, 200000, { format: 'MOVIE' }),
+    S(2, 'Naruto', null, 900000),
+    S(1_000_000_010, 'Heat', null, 900000, { format: 'MOVIE' }),
+    S(1_000_000_011, 'The Wire', null, 400000),
+    // obscure on IMDb's scale, popular on AniList's
+    S(1_000_000_012, 'Arrival', null, 9000, { format: 'MOVIE' }),
+  ];
+  const owner = (id) => (id >= 1_000_000_000 ? 'screen' : 'anime');
+  const catalog = Object.assign(new EventEmitter(), {
+    all: () => pool,
+    info: () => ({ file: 'a+b', hasRelease: true, parts: [{ id: 'anime' }, { id: 'screen' }] }),
+    sequelAliases: () => [],
+    ownerOf: owner,
+    floorFor: (id) => (owner(id) === 'screen' ? 15000 : 5000),
+  });
+  const user = {
+    settings: () => ({ channels: [], onePerViewer: false }),
+    ignores: () => new Set(),
+    dismissed: () => new Set(),
+    aliases: () => [],
+    setSettings: () => {},
+  };
+  const engine = new PollEngine(catalog, user);
+  const movies = { formats: ['MOVIE'], release: ALL.release };
+  await engine.start({ mode: 'open', filters: { ...ALL, byCatalog: { anime: movies, screen: movies } }, shortlist: [] });
+  for (const [u, text] of [['a', 'akira'], ['b', 'naruto'], ['c', 'heat'], ['d', 'the wire'], ['e', 'arrival']]) say(engine, u, text);
+  // Naruto and The Wire are series; "arrival" is chatter by IMDb's floor
+  assert.deepEqual(counts(engine), { 1: 1, 1_000_000_010: 1 });
+  assert.equal(engine.snapshot().filteredVotes, 2);
+  engine.stop();
+});

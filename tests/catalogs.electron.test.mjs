@@ -237,3 +237,29 @@ test('built-in catalogs: split a sequel out, edit a title, add one – kept apar
   assert.equal(again.all().find((s) => s.id === 20).titleRomaji, 'Naruto');
   assert.ok(again.all().some((s) => s.id === added.id));
 });
+
+test('several catalogs at once: pooled titles, per-title floors, dropping one', () => {
+  const dir = tmp();
+  const c = catalogs(dir);
+  const songs = c.create('Songs');
+  const s1 = c.custom(songs).add(entry('Idol', { format: 'MOVIE' }));
+  // any order in, the list's order out
+  c.select(`${songs}+anime`);
+  assert.equal(c.selectedId(), `anime+${songs}`);
+  assert.deepEqual(c.list().filter((x) => x.selected).map((x) => x.id), ['anime', songs]);
+  const info = c.info();
+  assert.deepEqual(info.parts.map((p) => p.id), ['anime', songs]);
+  assert.equal(info.name, 'Anime + Songs');
+  assert.equal(info.eligible, 6);
+  assert.equal(c.all().length, 6);
+  assert.equal(c.all(), c.all(), 'the pool is cached');
+  assert.equal(c.ownerOf(s1.id), songs);
+  assert.equal(c.ownerOf(3), 'anime');
+  assert.equal(c.floorFor(3), 5000);
+  assert.equal(c.floorFor(s1.id), 0);
+  assert.throws(() => c.select('anime+anime'), /Unknown catalog/);
+  assert.throws(() => c.editable(c.selectedId()), /Pick one catalog/);
+  // removing one of them leaves the rest in use
+  c.remove(songs);
+  assert.equal(c.selectedId(), 'anime');
+});

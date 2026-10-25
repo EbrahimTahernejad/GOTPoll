@@ -15,6 +15,9 @@ import { CatalogStore, type CatalogInfo, type UpdateStatus } from './store.js';
 //   screen   Movies & series – IMDb's free datasets, imported in the app
 //   games    Video games – Wikidata, imported in the app
 //   custom-N the streamer's own, built in the app (any number of them)
+//
+// Several can be in use at once ("anime+screen"): their titles are pooled,
+// each keeps its own popularity floor and the poll filters it per catalog.
 
 export type SelectedCatalogInfo = CatalogInfo & {
   id: string;
@@ -26,7 +29,15 @@ export type SelectedCatalogInfo = CatalogInfo & {
   releases: boolean;
   /** below this popularity a 1–2 word message counts as chatter (catalog units) */
   popularityFloor: number;
+  /** the catalogs in use – one, or several pooled together */
+  parts: CatalogPart[];
 };
+
+export type CatalogPart = { id: string; name: string; kind: CatalogKind; formats: FormatLabel[]; releases: boolean };
+
+const MIX = '+';
+/** one empty list, so the overlay cache sees "no additions" as unchanged */
+const NONE: Show[] = [];
 
 // "Obscure", per catalog: AniList users · IMDb votes · Wikipedias · (custom: nothing is)
 const POPULARITY_FLOOR: Record<CatalogKind, number> = { anilist: 5000, imdb: 15000, games: 15, custom: 0 };
@@ -98,6 +109,7 @@ export class Catalogs extends EventEmitter<{
   private overrides: Map<number, ShowOverride> = new Map();
   private overlays = new Map<BuiltIn, { base: Show[]; extra: Show[]; v: number; out: Show[]; sequels: { title: string; rootId: number }[] }>();
   private overrideVersion = 0;
+  private mixes = new Map<string, { inputs: Show[][]; out: Show[] }>();
   private customDir: string;
   private patched = new WeakSet<Show[]>();
 
@@ -148,7 +160,7 @@ export class Catalogs extends EventEmitter<{
     ] as const) {
       store.on('changed', () => this.onCatalogChanged(id));
       store.on('status', (s) => {
-        if (this.selectedId() === id) this.emit('status', s);
+        if (this.partsOf(this.selectedId()).includes(id)) this.emit('status', s);
         this.emit('list', this.list());
       });
     }
@@ -170,8 +182,10 @@ export class Catalogs extends EventEmitter<{
     return this.has(id) ? id : 'anime';
   }
 
+  /** Pick the catalog(s) in use: "screen", or several as "anime+screen". */
   select(id: string) {
     if (!this.has(id)) throw new Error('Unknown catalog');
+    id = this.mixOf(this.partsOf(id));
     if (id === this.selectedId()) return;
     this.opts.setSelected(id);
     this.emit('changed', this.info());
@@ -185,15 +199,63 @@ export class Catalogs extends EventEmitter<{
 
   info(): SelectedCatalogInfo {
     const id = this.selectedId();
+    const ids = this.partsOf(id);
+    const parts = ids.map((p) => this.partOf(p));
+    if (ids.length === 1) return { ...this.storeOf(id).info(), ...parts[0], parts, popularityFloor: this.floorOf(id) };
+    const each = ids.map((p) => this.storeOf(p).info());
+    const formats: FormatLabel[] = [];
+    for (const f of parts.flatMap((p) => p.formats)) if (!formats.some((x) => x.id === f.id)) formats.push(f);
+    return {
+      file: each.map((e) => e.file).join(MIX),
+      installed: each.every((e) => e.installed),
+      hasRelease: each.every((e) => e.hasRelease),
+      count: each.reduce((n, e) => n + e.count, 0),
+      eligible: each.reduce((n, e) => n + e.eligible, 0),
+      syncedAt: Math.min(...each.map((e) => e.syncedAt)),
+      source: 'mixed',
+      canRevert: false,
+      id,
+      name: parts.map((p) => p.name).join(' + '),
+      // the wording that fits any title ("type a title in chat")
+      kind: 'custom',
+      formats,
+      releases: parts.some((p) => p.releases),
+      popularityFloor: this.floorOf(id),
+      parts,
+    };
+  }
+
+  private partOf(id: string): CatalogPart {
     const formats =
       id === 'anime' ? ANIME_FORMATS : id === 'screen' ? IMDB_FORMATS : id === 'games' ? GAME_FORMATS : this.custom(id).formats();
     const releases = isBuiltIn(id) ? true : this.custom(id).all().some((s) => s.release !== null);
-    return { ...this.storeOf(id).info(), id, name: this.nameOf(id), kind: this.kindOf(id), formats, releases, popularityFloor: this.floorOf(id) };
+    return { id, name: this.nameOf(id), kind: this.kindOf(id), formats, releases };
   }
 
-  /** The chatter guard's popularity floor for a catalog. */
+  /** The chatter guard's popularity floor for a catalog (the lowest of a mix). */
   floorOf(id: string) {
-    return POPULARITY_FLOOR[this.kindOf(id)];
+    return Math.min(...this.partsOf(id).map((p) => POPULARITY_FLOOR[this.kindOf(p)]));
+  }
+
+  /** The floor for one title – its own catalog's. */
+  floorFor(showId: number) {
+    return POPULARITY_FLOOR[this.kindOf(this.ownerOf(showId))] ?? 0;
+  }
+
+  /** The single catalog a title comes from ('anime', 'screen', 'custom-3', …). */
+  ownerOf(showId: number): string {
+    return isImdbId(showId) ? 'screen' : isGameId(showId) ? 'games' : isCustomId(showId) ? this.ownerOfCustom(customNumberOf(showId)) : 'anime';
+  }
+
+  /** "anime+screen" → ['anime', 'screen'] */
+  partsOf(id: string): string[] {
+    return id.split(MIX).filter(Boolean);
+  }
+
+  /** Several catalog ids as one, in the order the list shows them. */
+  mixOf(ids: string[]): string {
+    const order = this.list().map((c) => c.id);
+    return [...new Set(ids)].sort((a, b) => order.indexOf(a) - order.indexOf(b)).join(MIX);
   }
 
   sequelAliases(): { title: string; rootId: number }[] {
@@ -202,19 +264,21 @@ export class Catalogs extends EventEmitter<{
 
   /** Sequel titles pointing at their franchise root (anime), with the streamer's splits applied. */
   sequelsOf(id: string): { title: string; rootId: number }[] {
+    if (id.includes(MIX)) return this.partsOf(id).flatMap((p) => this.sequelsOf(p));
     if (id !== 'anime') return [];
     this.showsOf('anime');
     return this.overlays.get('anime')!.sequels;
   }
 
   get status(): UpdateStatus {
-    const s = this.storeOf(this.selectedId());
-    return s instanceof CatalogStore ? s.status : { state: 'idle' };
+    const stores = this.partsOf(this.selectedId()).map((p) => this.storeOf(p));
+    const busy = stores.find((s) => s instanceof CatalogStore && s.status.state !== 'idle') ?? stores[0];
+    return busy instanceof CatalogStore ? busy.status : { state: 'idle' };
   }
 
   /** A title by id from whichever catalog it belongs to (past tournaments, other catalogs). */
   lookup(id: number): Show | undefined {
-    const where = isImdbId(id) ? 'screen' : isGameId(id) ? 'games' : isCustomId(id) ? this.ownerOfCustom(customNumberOf(id)) : 'anime';
+    const where = this.ownerOf(id);
     if (!this.has(where)) return undefined;
     return this.showsOf(where).find((s) => s.id === id);
   }
@@ -228,10 +292,20 @@ export class Catalogs extends EventEmitter<{
   // ------------------------------------------------------------ any catalog
 
   has(id: string) {
-    return isBuiltIn(id) || this.customs.has(id);
+    const parts = this.partsOf(id);
+    return parts.length > 0 && new Set(parts).size === parts.length && parts.every((p) => isBuiltIn(p) || this.customs.has(p));
   }
 
   showsOf(id: string): Show[] {
+    if (id.includes(MIX)) {
+      // pooled; rebuilt only when one of the catalogs changed
+      const inputs = this.partsOf(id).map((p) => this.showsOf(p));
+      const cached = this.mixes.get(id);
+      if (cached && cached.inputs.every((x, i) => x === inputs[i])) return cached.out;
+      const out = inputs.flat();
+      this.mixes.set(id, { inputs, out });
+      return out;
+    }
     if (!isBuiltIn(id)) return this.custom(id).all();
     let base: Show[];
     if (id === 'screen') {
@@ -243,7 +317,7 @@ export class Catalogs extends EventEmitter<{
       }
     } else base = id === 'anime' ? this.anime.all() : this.games.all();
     const handMade = id === 'anime' ? this.opts.animeExtras() : [];
-    const added = this.additions.get(id)?.all() ?? [];
+    const added = this.additions.get(id)?.all() ?? NONE;
     return this.overlay(id, base, handMade, added);
   }
 
@@ -286,8 +360,7 @@ export class Catalogs extends EventEmitter<{
     if (clean) this.overrides.set(showId, clean);
     else this.overrides.delete(showId);
     this.overrideVersion++;
-    const where = isImdbId(showId) ? 'screen' : isGameId(showId) ? 'games' : isCustomId(showId) ? this.ownerOfCustom(customNumberOf(showId)) : 'anime';
-    this.onCatalogChanged(where);
+    this.onCatalogChanged(this.ownerOf(showId));
   }
 
   /** Count a sequel on its own (or back with its franchise), keeping any other edits. */
@@ -298,6 +371,7 @@ export class Catalogs extends EventEmitter<{
 
   /** Where entries of a catalog are added and edited: a custom catalog itself, or a built-in's additions. */
   editable(id: string): CustomCatalog {
+    if (id.includes(MIX)) throw new Error('Pick one catalog to add titles to');
     if (!isBuiltIn(id)) return this.custom(id);
     let c = this.additions.get(id);
     if (!c) {
@@ -319,7 +393,7 @@ export class Catalogs extends EventEmitter<{
   }
 
   list(): CatalogSummary[] {
-    const selected = this.selectedId();
+    const selected = this.partsOf(this.selectedId());
     const summary = (id: string): CatalogSummary => {
       const store = this.storeOf(id);
       const info = store.info();
@@ -332,25 +406,25 @@ export class Catalogs extends EventEmitter<{
         eligible: info.eligible,
         syncedAt: info.syncedAt,
         canRevert: info.canRevert,
-        selected: id === selected,
+        selected: selected.includes(id),
         status: store instanceof CatalogStore ? store.status : { state: 'idle' },
       };
     };
     return [...BUILT_IN.map((b) => b.id), ...[...this.customs.keys()].sort((a, b) => num(a) - num(b))].map(summary);
   }
 
-  async update(id = this.selectedId()) {
+  async update(id = this.partsOf(this.selectedId())[0]) {
     const s = this.storeOf(id);
     if (!(s instanceof CatalogStore)) throw new Error('Custom catalogs are edited, not updated');
     await s.update();
   }
 
-  cancel(id = this.selectedId()) {
+  cancel(id = this.partsOf(this.selectedId())[0]) {
     const s = this.storeOf(id);
     if (s instanceof CatalogStore) s.cancel();
   }
 
-  revert(id = this.selectedId()) {
+  revert(id = this.partsOf(this.selectedId())[0]) {
     const s = this.storeOf(id);
     return s instanceof CatalogStore ? s.revert() : false;
   }
@@ -380,7 +454,8 @@ export class Catalogs extends EventEmitter<{
 
   remove(id: string) {
     const c = this.custom(id);
-    if (this.selectedId() === id) this.select('anime');
+    const parts = this.partsOf(this.selectedId());
+    if (parts.includes(id)) this.select(parts.filter((p) => p !== id).join(MIX) || 'anime');
     this.customs.delete(id);
     c.close();
     for (const ext of ['', '-wal', '-shm']) rmSync(`${c.file}${ext}`, { force: true });
@@ -395,7 +470,7 @@ export class Catalogs extends EventEmitter<{
   }
 
   private onCatalogChanged(id: string) {
-    if (this.selectedId() === id) this.emit('changed', this.info());
+    if (this.partsOf(this.selectedId()).includes(id)) this.emit('changed', this.info());
     this.emit('list', this.list());
   }
 
