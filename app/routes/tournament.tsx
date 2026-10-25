@@ -577,15 +577,29 @@ function OpenRound({
             ) : (
               <span className="min-w-0 flex-1">
                 <b>{cut.candidates.length}</b> shows are level on <b>{cut.votes}</b> votes for the last{' '}
-                {cut.slots === 1 ? 'spot' : <b>{cut.slots} spots</b>}.
+                {cut.slots === 1 ? 'spot' : <b>{cut.slots} spots</b>}:
+                <span className="mt-1.5 flex flex-wrap gap-1.5">
+                  {cut.candidates.map((id) => (
+                    <span key={id} className="bg-background/70 text-foreground flex items-center gap-1.5 rounded-full border py-0.5 pr-2.5 pl-0.5 text-xs whitespace-nowrap">
+                      <Cover show={library.get(id)} className="h-5 w-5 rounded-full" />
+                      {library.get(id)?.titleRomaji ?? `#${id}`}
+                    </span>
+                  ))}
+                </span>
               </span>
             )
           ) : (
             <span className="min-w-0 flex-1">
-              The tie on {cut.votes} votes was settled {cut.method === 'draw' ? 'by a draw' : cut.method === 'coin' ? 'by a coin flip' : 'by hand'}.
+              The tie on {cut.votes} votes was settled {cut.method === 'draw' ? 'by a draw' : cut.method === 'coin' ? 'by a coin flip' : 'by hand'}:{' '}
+              {cut.candidates.map((id, i) => (
+                <span key={id}>
+                  {i > 0 && ', '}
+                  <span className={cut.picked?.includes(id) ? 'text-foreground font-semibold' : 'line-through'}>{library.get(id)?.titleRomaji ?? `#${id}`}</span>
+                </span>
+              ))}
+              .
             </span>
           )}
-          <div className="grow" />
           {unsettled && !picking && (
             <>
               <Button size="sm" variant="outline" disabled={pending !== null} onClick={() => setPicking([])}>

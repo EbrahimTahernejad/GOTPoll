@@ -865,11 +865,41 @@ export default function DrawScreen({ t }: { t: PublicTournament }) {
             </div>
           );
         })}
-        {done && (
-          <motion.div className="text-[0.9vw] font-bold tracking-[0.3em] text-white/45 uppercase" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            The rest are out
-          </motion.div>
-        )}
+        {/* every show in the drum, and how it fared */}
+        <div className="mt-[0.4vw] border-t border-white/10 pt-[1vw]">
+          <div className="mb-[0.6vw] text-[0.8vw] font-bold tracking-[0.3em] text-white/45 uppercase">In the drum</div>
+          <div className="grid grid-cols-2 gap-x-[1vw] gap-y-[0.5vw]">
+            {cut.candidates.map((e) => {
+              const k = picked.indexOf(e.id);
+              const state = k >= 0 && landed > k ? 'in' : done ? 'out' : 'drum';
+              return (
+                <motion.div
+                  key={e.id}
+                  layout
+                  className={`flex min-w-0 items-center gap-[0.5vw] transition-opacity duration-700 ${state === 'out' ? 'opacity-40' : ''}`}
+                >
+                  {e.cover ? (
+                    <img src={e.cover} alt="" className={`h-[2.2vw] w-[1.65vw] shrink-0 rounded-[0.25vw] object-cover ${state === 'out' ? 'grayscale' : ''}`} />
+                  ) : (
+                    <span className="h-[2.2vw] w-[1.65vw] shrink-0 rounded-[0.25vw] bg-white/10" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-[0.9vw] font-semibold">{e.title}</span>
+                  {state !== 'drum' && (
+                    <motion.span
+                      initial={{ scale: 1.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className={`shrink-0 rounded-[0.25vw] px-[0.4vw] text-[0.65vw] font-black tracking-widest ${
+                        state === 'in' ? 'bg-emerald-400 text-emerald-950' : 'bg-white/10 text-white/50'
+                      }`}
+                    >
+                      {state === 'in' ? 'IN' : 'OUT'}
+                    </motion.span>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
       </motion.div>
     </div>
   );
