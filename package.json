@@ -2,7 +2,7 @@
   "name": "got-poll",
   "private": true,
   "type": "module",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "author": "eb1",
   "description": "Counts anime votes from Twitch, YouTube and Rumble chat, with a live animated results page",
   "main": "electron/main.js",
