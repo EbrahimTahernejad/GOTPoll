@@ -514,41 +514,48 @@ function OpenRound({
 
   return (
     <section className="bg-card/60 flex min-h-0 flex-1 flex-col rounded-xl border">
-      <div className="flex items-center gap-4 border-b p-4">
-        <StateBadge state={live ? 'running' : 'ended'} />
-        <div className="font-mono text-2xl font-semibold tabular-nums">{time ?? '00:00:00'}</div>
+      <div className="border-b">
+        <div className="flex items-center gap-4 p-4">
+          <StateBadge state={live ? 'running' : 'ended'} />
+          <div className="font-mono text-2xl font-semibold tabular-nums">{time ?? '00:00:00'}</div>
+          {live && (
+            <div className="text-muted-foreground flex items-center gap-4 text-xs">
+              <Stat value={poll.totalVotes} label="votes" />
+              <Stat value={poll.totalVoters} label="viewers" />
+            </div>
+          )}
+          <div className="grow" />
+          {live ? (
+            <>
+              <Button variant="outline" disabled={pending !== null} onClick={() => act({ type: 'retry-open' })} title="Throw away the votes and start again">
+                <RotateCcw className="h-3.5 w-3.5" /> Restart
+              </Button>
+              <Button variant="destructive" disabled={pending !== null} onClick={() => act({ type: 'stop-open' })}>
+                {pending === 'stop-open' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-3.5 w-3.5 fill-current" />}
+                End open round
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" disabled={pending !== null} onClick={() => act({ type: 'retry-open' })}>
+                <RotateCcw className="h-3.5 w-3.5" /> Run it again
+              </Button>
+              <Button
+                disabled={pending !== null || unsettled || voted.length + t.config.carried.length < 2}
+                title={unsettled ? 'Settle the tie on the qualifying line first' : undefined}
+                onClick={() => act({ type: 'build-bracket' })}
+              >
+                {pending === 'build-bracket' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
+                Build the bracket
+              </Button>
+            </>
+          )}
+        </div>
+        {/* how the viewer page shows the round – its own row, the header has no room for it */}
         {live && (
-          <div className="text-muted-foreground flex items-center gap-4 text-xs">
-            <Stat value={poll.totalVotes} label="votes" />
-            <Stat value={poll.totalVoters} label="viewers" />
+          <div className="-mt-1 px-4 pb-3">
+            <LiveRows />
           </div>
-        )}
-        <div className="grow" />
-        {live && <LiveRows />}
-        {live ? (
-          <>
-            <Button variant="outline" disabled={pending !== null} onClick={() => act({ type: 'retry-open' })} title="Throw away the votes and start again">
-              <RotateCcw className="h-3.5 w-3.5" /> Restart
-            </Button>
-            <Button variant="destructive" disabled={pending !== null} onClick={() => act({ type: 'stop-open' })}>
-              {pending === 'stop-open' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-3.5 w-3.5 fill-current" />}
-              End open round
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button variant="outline" disabled={pending !== null} onClick={() => act({ type: 'retry-open' })}>
-              <RotateCcw className="h-3.5 w-3.5" /> Run it again
-            </Button>
-            <Button
-              disabled={pending !== null || unsettled || voted.length + t.config.carried.length < 2}
-              title={unsettled ? 'Settle the tie on the qualifying line first' : undefined}
-              onClick={() => act({ type: 'build-bracket' })}
-            >
-              {pending === 'build-bracket' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
-              Build the bracket
-            </Button>
-          </>
         )}
       </div>
 
