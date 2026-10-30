@@ -143,13 +143,17 @@ function CutTag({ cut }: { cut: Cut }) {
   );
 }
 
+// AnimatePresence's popLayout lifts a leaving card out of the grid by its ref
+// – without it the card stays in place and a 4th card wraps to a new row
 function HeroCard({
+  ref,
   entry,
   rank,
   total,
   move,
   cut,
 }: {
+  ref?: React.Ref<HTMLDivElement>;
   entry: PublicEntry;
   rank: number;
   total: number;
@@ -161,6 +165,7 @@ function HeroCard({
   const lead = rank === 0;
   return (
     <motion.div
+      ref={ref}
       layout
       initial={{ opacity: 0, y: 40, scale: 0.92 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -230,12 +235,14 @@ function HeroCard({
 }
 
 function Row({
+  ref,
   entry,
   rank,
   leader,
   move,
   cut,
 }: {
+  ref?: React.Ref<HTMLLIElement>;
   entry: PublicEntry;
   rank: number;
   leader: number;
@@ -245,6 +252,7 @@ function Row({
   const width = leader ? (entry.count / leader) * 100 : 0;
   return (
     <motion.li
+      ref={ref}
       layout
       initial={{ opacity: 0, x: -30 }}
       animate={{ opacity: 1, x: 0 }}
@@ -313,7 +321,7 @@ export default function Leaderboard({
 
   return (
     <LayoutGroup>
-      <div className="grid grid-cols-[1.25fr_1fr_1fr] gap-[1.4vw]">
+      <div className="relative grid grid-cols-[1.25fr_1fr_1fr] gap-[1.4vw]">
         <AnimatePresence mode="popLayout">
           {top.map((e, i) => (
             <HeroCard key={e.id} entry={e} rank={i} total={snap.totalVotes} move={moves.get(e.id)} cut={cutOf(i)} />
@@ -323,7 +331,7 @@ export default function Leaderboard({
       {rest.length > 0 && (
         // layoutScroll: rows animate between places measured inside the scroller, not the page
         <motion.div layoutScroll className="mt-[1.4vw] min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
-          <ul className="grid gap-x-[1.6vw] gap-y-[0.5vw]" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+          <ul className="relative grid gap-x-[1.6vw] gap-y-[0.5vw]" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
             <AnimatePresence mode="popLayout">
               {rest.map((e, i) => (
                 <Row key={e.id} entry={e} rank={i + 3} leader={leader} move={moves.get(e.id)} cut={cutOf(i + 3)} />
