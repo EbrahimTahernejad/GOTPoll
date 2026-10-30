@@ -307,12 +307,9 @@ export default function Leaderboard({
   const top = ranking.slice(0, 3);
   const rest = ranking.slice(3, snap.liveRows ?? 15);
   const leader = ranking[0]?.count ?? 0;
-  // the streamer picks the columns; rows shrink to fit the width (a row needs
-  // ~1/2.6 of it at full size) and the list scrolls when it's taller than the screen
-  const shown = Math.max(0, (snap.liveRows ?? 15) - 3);
+  // the streamer picks the columns; filled row by row (4 5 / 6 7 / …), and
+  // the list scrolls when it's taller than the screen
   const cols = snap.liveColumns ?? 2;
-  const zoom = Math.min(1, 2.6 / cols);
-  const perCol = Math.max(1, Math.ceil(shown / cols));
 
   return (
     <LayoutGroup>
@@ -324,19 +321,16 @@ export default function Leaderboard({
         </AnimatePresence>
       </div>
       {rest.length > 0 && (
-        // the scroller stays unzoomed so it keeps its place in the column; only the rows inside shrink
-        <div className="mt-[1.4vw] min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
-          <ul
-            className="grid grid-flow-col gap-x-[1.6vw] gap-y-[0.5vw]"
-            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${perCol}, auto)`, zoom }}
-          >
+        // layoutScroll: rows animate between places measured inside the scroller, not the page
+        <motion.div layoutScroll className="mt-[1.4vw] min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
+          <ul className="grid gap-x-[1.6vw] gap-y-[0.5vw]" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
             <AnimatePresence mode="popLayout">
               {rest.map((e, i) => (
                 <Row key={e.id} entry={e} rank={i + 3} leader={leader} move={moves.get(e.id)} cut={cutOf(i + 3)} />
               ))}
             </AnimatePresence>
           </ul>
-        </div>
+        </motion.div>
       )}
     </LayoutGroup>
   );
