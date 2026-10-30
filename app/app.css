@@ -238,3 +238,34 @@ html.no-glass [data-slot='dialog-content'] {
 html.no-glass [data-slot='dialog-overlay'] {
   backdrop-filter: none;
 }
+
+/* Thin rounded scrollbars everywhere – Windows' default ones are wide, grey
+   and boxy. The thumb takes the text colour around it, so it reads on the
+   app's light and dark themes and on the always-dark viewer page alike.
+   Chromium (the app, OBS, Edge/Chrome) draws these; Firefox gets its thin one. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: color-mix(in oklab, currentColor 22%, transparent);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklab, currentColor 40%, transparent);
+}
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, currentColor 30%, transparent) transparent;
+  }
+}
