@@ -21,7 +21,7 @@ jobs:
             os: ubuntu-22.04
             platform: linux
           - name: macOS arm64
-            os: macos-14 # Apple Silicon runner
+            os: macos-15 # Apple Silicon runner (macos-14 is retired November 2026)
             platform: mac
     runs-on: ${{ matrix.os }}
     steps:
