@@ -591,7 +591,8 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     return show.release === null || f.release.includes(show.release);
   }
 
-  publicSnapshot(s = this.snapshot()): PublicSnapshot {
+  /** What the viewer page gets; the live feed carries the top 40, "Show all" asks for more. */
+  publicSnapshot(s = this.snapshot(), limit = 40): PublicSnapshot {
     const settings = this.user.settings();
     const enabled = settings.channels.filter((c) => c.enabled);
     return {
@@ -603,7 +604,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       endedAt: s.endedAt,
       totalVoters: s.totalVoters,
       totalVotes: s.totalVotes,
-      ranking: s.ranking.slice(0, 40).map((r) => ({ ...publicEntry(r, r.count), option: r.option, breakdown: r.breakdown })),
+      ranking: s.ranking.slice(0, limit).map((r) => ({ ...publicEntry(r, r.count), option: r.option, breakdown: r.breakdown })),
       channels: enabled.map((c) => ({
         id: c.id,
         platform: c.platform,

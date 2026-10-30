@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import { Coins, Crown, Dices, Hand, Medal, X } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { roundName } from '~/lib/tournament';
 import { cn } from '~/lib/utils';
 import ChatSplit from '../chat-split';
@@ -21,11 +21,14 @@ const PHASE: Record<TournamentPhase, string> = {
 export default function Summary({
   t,
   channels,
+  live,
   focus,
   onClose,
 }: {
   t: PublicTournament;
   channels: PublicChannel[];
+  /** the live feed's ranking (top 40) – the open round while it runs */
+  live: PublicEntry[];
   /** jump straight to a section */
   focus?: 'open';
   onClose: () => void;
@@ -40,8 +43,27 @@ export default function Summary({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // while nominations run, fetch every show with votes (the live feed only carries the top 40)
+  const running = t.phase === 'open';
+  const [all, setAll] = useState<PublicEntry[] | null>(null);
+  useEffect(() => {
+    if (!running) return;
+    let alive = true;
+    const load = () =>
+      fetch('/api/counts?all=1')
+        .then((r) => r.json() as Promise<PublicSnapshot>)
+        .then((s) => alive && setAll(s.ranking))
+        .catch(() => {});
+    void load();
+    const timer = setInterval(load, 3000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [running]);
+
   const R = t.rounds.length;
-  const standings = t.allStandings.length ? t.allStandings : t.standings;
+  const standings = running ? (all ?? live) : t.allStandings.length ? t.allStandings : t.standings;
   const roundsPlayed = t.rounds
     // matches nobody is in yet ("TBD vs TBD") are just noise here
     .map((row, r) => ({ r, matches: row.filter((m) => m.status !== 'empty' && (m.a || m.b)) }))
@@ -159,8 +181,19 @@ export default function Summary({
               )}
               <div className="space-y-1">
                 {standings.map((e, i) => {
-                  const tag = t.phase === 'open' ? undefined : t.qualified.includes(e.id) ? 'IN' : t.tied.includes(e.id) ? 'TIE' : 'OUT';
-                  return <EntryRow key={e.id} e={e} rank={i + 1} tag={tag} />;
+                  const tag = running ? (i < t.qualifySpots ? 'IN' : undefined) : t.qualified.includes(e.id) ? 'IN' : t.tied.includes(e.id) ? 'TIE' : 'OUT';
+                  return (
+                    <Fragment key={e.id}>
+                      {running && i === t.qualifySpots && (
+                        <div className="flex items-center gap-2 py-1.5 text-[11px] font-bold tracking-[0.2em] text-amber-300 uppercase">
+                          <span className="h-px flex-1 bg-amber-300/40" />
+                          Not through yet – vote them up
+                          <span className="h-px flex-1 bg-amber-300/40" />
+                        </div>
+                      )}
+                      <EntryRow e={e} rank={i + 1} tag={tag} />
+                    </Fragment>
+                  );
                 })}
                 {standings.length === 0 && <div className="text-sm text-white/40">No votes yet.</div>}
               </div>

@@ -193,3 +193,16 @@ test('several catalogs: each one filtered by its own chips, each title by its ow
   assert.equal(engine.snapshot().filteredVotes, 2);
   engine.stop();
 });
+
+test('the live feed carries the top 40; "Show all" asks for everyone', async () => {
+  const many = Array.from({ length: 60 }, (_, i) => S(100 + i, `Show Number ${i} Of The Season`, null, 900000));
+  const catalog = Object.assign(new EventEmitter(), { all: () => many, info: () => ({ file: 'a.db', hasRelease: true }), sequelAliases: () => [] });
+  const user = { settings: () => ({ channels: [], onePerViewer: false }), ignores: () => new Set(), dismissed: () => new Set(), aliases: () => [], setSettings: () => {} };
+  const engine = new PollEngine(catalog, user);
+  await engine.start({ mode: 'open', filters: ALL, shortlist: [] });
+  many.forEach((s, i) => say(engine, `u${i}`, s.titleRomaji));
+  assert.equal(engine.snapshot().ranking.length, 60);
+  assert.equal(engine.publicSnapshot().ranking.length, 40);
+  assert.equal(engine.publicSnapshot(undefined, 1000).ranking.length, 60);
+  engine.stop();
+});

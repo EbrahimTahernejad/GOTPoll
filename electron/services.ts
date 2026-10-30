@@ -70,8 +70,8 @@ export const poll = new PollEngine(catalog, user, {
 export const tournament = new TournamentController(poll, user);
 
 /** What the viewer page gets: the poll, and the tournament when one is open. */
-export function publicFeed(s?: PollSnapshot): PublicSnapshot {
-  return { ...poll.publicSnapshot(s), tournament: tournament.publicView() };
+export function publicFeed(s?: PollSnapshot, opts: { all?: boolean } = {}): PublicSnapshot {
+  return { ...poll.publicSnapshot(s, opts.all ? 1000 : 40), tournament: tournament.publicView() };
 }
 
 /** Switch the catalog in use. Not mid-poll or mid-tournament: they hold its titles. */

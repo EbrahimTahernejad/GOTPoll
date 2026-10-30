@@ -14,14 +14,15 @@ import { isPublicRequest, isPublicUpgrade } from './tunnel/allowlist.js';
 //   GET  /            the live ranking page
 //   WS   /ws          pushes a PublicSnapshot on every change (~5/s max)
 //   GET  /api/counts  same payload, for anything that can't do websockets
+//                     (?all=1: every show with votes, not just the top 40 – "Show all")
 
 const dirname = path.resolve(fileURLToPath(import.meta.url), '..');
 const app = express();
 const server = createServer(app);
 export const port = await getFreePort({ port: [4747, 4748, 4749] });
 
-app.get('/api/counts', (_req: Request, res: Response) => {
-  res.json(publicFeed());
+app.get('/api/counts', (req: Request, res: Response) => {
+  res.json(publicFeed(undefined, { all: req.query.all === '1' }));
 });
 
 // cover images added to custom catalogs (content-addressed, so cache forever)
@@ -263,8 +264,8 @@ pub.use((req, res, next) => {
   res.setHeader('X-Robots-Tag', 'noindex');
   next();
 });
-pub.get('/api/counts', (_req: Request, res: Response) => {
-  res.json(publicFeed());
+pub.get('/api/counts', (req: Request, res: Response) => {
+  res.json(publicFeed(undefined, { all: req.query.all === '1' }));
 });
 pub.use('/media/covers', media);
 if (viteProxy) {
