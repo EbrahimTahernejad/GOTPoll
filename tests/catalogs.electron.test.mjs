@@ -176,7 +176,7 @@ test('games: Wikidata slices and names, Wikipedia box art, Steam and IGDB merged
       assert.equal(init.headers['Client-ID'], 'id');
       if (!/offset 0;/.test(init.body)) return json([]);
       return json([
-        { id: 5, name: 'Elden Ring', slug: 'elden-ring', alternative_names: [{ name: 'ER Tarnished' }], cover: { image_id: 'er1' }, total_rating_count: 3000 },
+        { id: 5, name: 'Elden Ring', slug: 'elden-ring', alternative_names: [{ name: 'ER Tarnished' }], cover: { image_id: 'er1' }, total_rating_count: 3000, genres: [{ name: 'Role-playing (RPG)' }, { name: 'Open world' }] },
         { id: 77, name: 'Celeste', slug: 'celeste', first_release_date: 1516924800, cover: { image_id: 'cel' }, total_rating_count: 1500 },
         { id: 78, name: 'Stardew Valley', external_games: [{ url: 'https://store.steampowered.com/app/999' }], total_rating_count: 2000 },
       ]);
@@ -192,7 +192,7 @@ test('games: Wikidata slices and names, Wikipedia box art, Steam and IGDB merged
         return [
           {
             item: { value: `http://www.wikidata.org/entity/Q${id}` },
-            ...(id === 1000 ? { alts: { value: 'ER|Elden|エルデンリング' } } : {}),
+            ...(id === 1000 ? { alts: { value: 'ER|Elden|エルデンリング' }, genres: { value: 'action role-playing game|open world' } } : {}),
             ...(g.article ? { w: { value: g.article } } : {}),
             ...(g.igdb ? { g: { value: g.igdb } } : {}),
           },
@@ -224,6 +224,7 @@ test('games: Wikidata slices and names, Wikipedia box art, Steam and IGDB merged
   const er = byId.get(GAME_ID_BASE + 1000);
   assert.equal(er.titleRomaji, 'Elden Ring');
   assert.deepEqual(er.synonyms, ['ER', 'Elden', 'ER Tarnished']);
+  assert.deepEqual(er.tags, ['Action role-playing game', 'Open world', 'Role-playing']);
   // IGDB's cover beats the box art; Steam's reviews lift its popularity
   assert.equal(er.coverImage, 'https://images.igdb.com/igdb/image/upload/t_cover_big/er1.jpg');
   assert.equal(er.popularity, 24);
@@ -365,6 +366,13 @@ test('several catalogs at once: pooled titles, per-title floors, dropping one', 
   assert.equal(c.floorFor(3), 5000);
   assert.equal(c.floorFor(s1.id), 0);
   assert.throws(() => c.select('anime+anime'), /Unknown catalog/);
+  // tags: typed on custom entries, edited onto built-in titles, listed per catalog (most used first)
+  c.custom(songs).add(entry('Bling', { tags: ['Pop', ' Pop ', 'Rap'] }));
+  c.setOverride(3, { tags: ['Sports'] });
+  const parts = c.info().parts;
+  assert.deepEqual(parts.find((p) => p.id === songs).tags, [{ name: 'Pop', count: 1 }, { name: 'Rap', count: 1 }]);
+  assert.deepEqual(parts.find((p) => p.id === 'anime').tags, [{ name: 'Sports', count: 1 }]);
+  assert.deepEqual(c.lookup(3).tags, ['Sports']);
   assert.throws(() => c.editable(c.selectedId()), /Pick one catalog/);
   // removing one of them leaves the rest in use
   c.remove(songs);

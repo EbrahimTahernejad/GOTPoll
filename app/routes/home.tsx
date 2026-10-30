@@ -8,7 +8,8 @@ import UnmatchedPanel from '~/components/poll/unmatched-panel';
 import AppHeader from '~/components/app/app-header';
 import { EmptyState, FilterChip, FilterGroup, Source, StateBadge, Stat } from '~/components/poll/bits';
 import ShortlistEditor from '~/components/poll/shortlist-editor';
-import { CatalogPicker, PartFilters, RELEASES } from '~/components/poll/catalog-filters';
+import LiveRows from '~/components/poll/live-rows';
+import { CatalogPicker, GroupFilters, PooledFilters } from '~/components/poll/catalog-filters';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import {
@@ -25,13 +26,6 @@ import useCatalogs from '~/hooks/useCatalogs';
 import useLibrary from '~/hooks/useLibrary';
 import usePoll from '~/hooks/usePoll';
 import { cn } from '~/lib/utils';
-
-const FORMATS: { id: ShowFormat; label: string }[] = [
-  { id: 'TV', label: 'TV' },
-  { id: 'MOVIE', label: 'Movie' },
-  { id: 'TV_SHORT', label: 'Short' },
-];
-
 
 export default function Home() {
   const snap = usePoll();
@@ -88,13 +82,6 @@ export default function Home() {
     }
   };
 
-  // a group can't be emptied: no shows would count
-  const toggle = <K extends 'formats' | 'release'>(key: K, value: PollFilters[K][number]) => {
-    if (!filters) return;
-    const list = filters[key] as string[];
-    const next = list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
-    if (next.length) setFilters({ ...filters, [key]: next });
-  };
 
   return (
     <>
@@ -175,48 +162,28 @@ export default function Home() {
                     </FilterGroup>
                   </div>
                 ) : (catalogInfo?.parts.length ?? 1) > 1 ? (
-                  catalogInfo!.parts.map((p) => (
-                    <PartFilters key={p.id} part={p} filters={filters} onChange={setFilters} disabled={running} />
-                  ))
+                  <PooledFilters parts={catalogInfo!.parts} filters={filters} onChange={setFilters} disabled={running} />
                 ) : (
-                <>
-                <FilterGroup label="Format">
-                  {(catalogInfo?.formats ?? FORMATS).map((f) => (
-                    <FilterChip
-                      key={f.id}
-                      on={filters.formats.includes(f.id)}
-                      disabled={running}
-                      onClick={() => toggle('formats', f.id)}
-                    >
-                      {f.label}
-                    </FilterChip>
-                  ))}
-                </FilterGroup>
-                {catalogInfo?.releases !== false && (
                 <FilterGroup
-                  label="Release"
+                  label="Counts"
                   note={
                     !snap.releaseKnown ? (
                       <Link to="/settings" className="text-amber-600 hover:underline dark:text-amber-400">
-                        Update the catalog to use this
+                        Update the catalog to filter by release
                       </Link>
                     ) : undefined
                   }
                 >
-                  {RELEASES.map((r) => (
-                    <FilterChip
-                      key={r.id}
-                      title={r.hint}
-                      on={filters.release.includes(r.id)}
-                      disabled={running || !snap.releaseKnown}
-                      onClick={() => toggle('release', r.id)}
-                    >
-                      {r.label}
-                    </FilterChip>
-                  ))}
+                  {catalogInfo?.parts[0] && (
+                    <GroupFilters
+                      part={catalogInfo.parts[0]}
+                      group={filters}
+                      releaseKnown={snap.releaseKnown}
+                      disabled={running}
+                      onChange={(g) => setFilters({ ...filters, ...g })}
+                    />
+                  )}
                 </FilterGroup>
-                )}
-                </>
                 )}
                 <FilterGroup label="Chat">
                   {snap.sources.filter((c) => c.enabled).length ? (
@@ -253,6 +220,8 @@ export default function Home() {
               <Trophy className="h-4 w-4 opacity-70" />
               <h2 className="text-sm font-semibold">Ranking</h2>
               {snap.ranking.length > 0 && <span className="text-muted-foreground text-xs">{snap.ranking.length} shows</span>}
+              <div className="grow" />
+              <LiveRows />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {snap.ranking.length === 0 ? (

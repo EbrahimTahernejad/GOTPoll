@@ -147,9 +147,11 @@ export function makeGamesSource(igdbKeys: () => IgdbKeys | null = () => null): C
         const data = await sparql(
           fetchImpl,
           signal,
-          `SELECT ?item (GROUP_CONCAT(DISTINCT ?alt; separator="|") AS ?alts) (SAMPLE(?article) AS ?w) (SAMPLE(?igdb) AS ?g) WHERE {
+          `SELECT ?item (GROUP_CONCAT(DISTINCT ?alt; separator="|") AS ?alts) (GROUP_CONCAT(DISTINCT ?genreName; separator="|") AS ?genres)
+                  (SAMPLE(?article) AS ?w) (SAMPLE(?igdb) AS ?g) WHERE {
             VALUES ?item { ${chunk.map((id) => `wd:Q${id - GAME_ID_BASE}`).join(' ')} }
             OPTIONAL { ?item skos:altLabel ?alt. FILTER(LANG(?alt) IN ("en", "mul")) }
+            OPTIONAL { ?item wdt:P136 ?genre. ?genre rdfs:label ?genreName. FILTER(LANG(?genreName) = "en") }
             OPTIONAL { ?item wdt:P5794 ?igdb }
             OPTIONAL { ?article schema:about ?item; schema:isPartOf <https://en.wikipedia.org/> }
           } GROUP BY ?item`
@@ -158,6 +160,7 @@ export function makeGamesSource(igdbKeys: () => IgdbKeys | null = () => null): C
           const g = rows.get(GAME_ID_BASE + Number(b.item.value.split('/Q').pop()));
           if (!g) continue;
           if (b.alts?.value) addNames(g, b.alts.value.split('|'));
+          if (b.genres?.value) addTags(g, b.genres.value.split('|'));
           g.article = b.w?.value;
           g.igdb = b.g?.value;
         }
@@ -248,7 +251,7 @@ export function makeGamesSource(igdbKeys: () => IgdbKeys | null = () => null): C
             signal,
             keys.clientId,
             token,
-            `fields name,slug,alternative_names.name,first_release_date,cover.image_id,total_rating_count,external_games.uid,external_games.url;
+            `fields name,slug,alternative_names.name,first_release_date,cover.image_id,total_rating_count,external_games.uid,external_games.url,genres.name;
              where total_rating_count >= 20 & version_parent = null & parent_game = null;
              sort total_rating_count desc; limit ${IGDB_PAGE}; offset ${offset};`
           );
@@ -267,6 +270,7 @@ export function makeGamesSource(igdbKeys: () => IgdbKeys | null = () => null): C
             g.start_year ??= start;
             g.popularity = Math.max(g.popularity, igdbPopularity(x.total_rating_count ?? 0));
             addNames(g, (x.alternative_names ?? []).map((a) => a.name));
+            addTags(g, (x.genres ?? []).map((a) => a.name));
             if (x.cover?.image_id) {
               g.cover_image = `https://images.igdb.com/igdb/image/upload/t_cover_big/${x.cover.image_id}.jpg`;
             } else if (!g.cover_image && steam) g.cover_image = steamCover(steam);
@@ -321,6 +325,29 @@ function addNames(g: Game, names: string[]) {
   g.synonyms = JSON.stringify(have.slice(0, 16));
 }
 
+// Wikidata says "first-person shooter", IGDB "Shooter"; both kept, as chips name them
+const GENRE_FIX: Record<string, string> = {
+  'Role-playing (RPG)': 'Role-playing',
+  "Hack and slash/Beat 'em up": 'Hack and slash',
+  'Turn-based strategy (TBS)': 'Turn-based strategy',
+  'Real Time Strategy (RTS)': 'Real-time strategy',
+};
+
+function addTags(g: Game, genres: string[]) {
+  const have: string[] = JSON.parse(g.tags ?? '[]');
+  const keys = new Set(have.map((t) => t.toLowerCase()));
+  for (const raw of genres) {
+    let t = raw?.trim();
+    if (!t || t.length > 40 || /^Q\d+$/.test(t)) continue;
+    t = GENRE_FIX[t] ?? t;
+    t = t[0].toUpperCase() + t.slice(1);
+    if (keys.has(t.toLowerCase())) continue;
+    keys.add(t.toLowerCase());
+    have.push(t);
+  }
+  g.tags = JSON.stringify(have.slice(0, 12));
+}
+
 /** Box art from English Wikipedia articles, 50 per request. Only portrait-ish images – a logo isn't a cover. */
 async function boxArt(fetchImpl: typeof fetch, signal: AbortSignal, games: Game[]) {
   const titleOf = (url: string) => decodeURIComponent(url.split('/wiki/').pop() ?? '').replace(/_/g, ' ');
@@ -372,6 +399,7 @@ type IgdbGame = {
   cover?: { image_id?: string };
   total_rating_count?: number;
   external_games?: { uid?: string; url?: string }[];
+  genres?: { name: string }[];
 };
 
 async function igdbToken(fetchImpl: typeof fetch, signal: AbortSignal, keys: IgdbKeys): Promise<string> {

@@ -203,6 +203,25 @@ test('the live feed carries the top 40; "Show all" asks for everyone', async () 
   many.forEach((s, i) => say(engine, `u${i}`, s.titleRomaji));
   assert.equal(engine.snapshot().ranking.length, 60);
   assert.equal(engine.publicSnapshot().ranking.length, 40);
+  // the board shows more than 40: the feed carries them
   assert.equal(engine.publicSnapshot(undefined, 1000).ranking.length, 60);
+  engine.stop();
+});
+
+test('genres / tags: only titles with one of the picked tags count', async () => {
+  const pool = [
+    S(1, 'Haikyuu!!', null, 900000, { tags: ['Sports', 'Comedy'] }),
+    S(2, 'Slam Dunk', null, 300000, { tags: ['Sports'] }),
+    S(3, 'Frieren', null, 900000, { tags: ['Fantasy'] }),
+    // an old catalog without tags: can't be judged, so it doesn't count under a tag filter
+    S(4, 'Monster', null, 400000),
+  ];
+  const catalog = Object.assign(new EventEmitter(), { all: () => pool, info: () => ({ file: 'a.db', hasRelease: true }), sequelAliases: () => [] });
+  const user = { settings: () => ({ channels: [], onePerViewer: false }), ignores: () => new Set(), dismissed: () => new Set(), aliases: () => [], setSettings: () => {} };
+  const engine = new PollEngine(catalog, user);
+  await engine.start({ mode: 'open', filters: { ...ALL, tags: ['Sports'] }, shortlist: [] });
+  for (const [u, text] of [['a', 'haikyuu'], ['b', 'slam dunk'], ['c', 'frieren'], ['d', 'monster']]) say(engine, u, text);
+  assert.deepEqual(counts(engine), { 1: 1, 2: 1 });
+  assert.equal(engine.snapshot().filteredVotes, 2);
   engine.stop();
 });

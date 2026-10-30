@@ -10,12 +10,14 @@ export function cleanFilters(f: PollFilters): PollFilters {
 }
 
 function cleanGroup(f: Omit<PollFilters, 'byCatalog'>): Omit<PollFilters, 'byCatalog'> {
+  const tags = Array.isArray(f.tags) ? [...new Set(f.tags.filter((t) => typeof t === 'string' && t && t.length <= 60))].slice(0, 100) : [];
   const formats = (['TV', 'TV_SHORT', 'MOVIE'] as const).filter((x) => f.formats?.includes(x));
   const release = (['released', 'airing', 'upcoming'] as const).filter((x) => f.release?.includes(x));
   // an empty group would make every show uncountable – treat it as "all"
   return {
     formats: formats.length ? formats : ['TV', 'TV_SHORT', 'MOVIE'],
     release: release.length ? release : ['released', 'airing', 'upcoming'],
+    ...(tags.length ? { tags } : {}),
   };
 }
 

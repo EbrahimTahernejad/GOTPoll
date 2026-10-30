@@ -173,6 +173,7 @@ export class CatalogStore extends EventEmitter<{
       score: r.score,
       favourites: r.favourites,
       parentId: r.parent_id,
+      tags: safeJson(r.tags ?? '[]'),
       release: releaseOf(r.status, r.start_year),
       // a prequel we don't carry (e.g. adult / OVA) doesn't disqualify a show
       eligible: r.parent_id === null || (r.parent_id !== -1 && !ids.has(r.parent_id)),

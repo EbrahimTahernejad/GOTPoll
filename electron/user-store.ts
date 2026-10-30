@@ -22,6 +22,8 @@ const DEFAULT_SETTINGS: Settings = {
   igdbClientSecret: '',
   tunnelAutoStart: false,
   onePerViewer: false,
+  liveRows: 15,
+  liveColumns: 2,
   catalog: 'anime',
   // romaji-aware by default: multilingual embeddings + a local LLM judge.
   // Falls back to classic on its own until the models are downloaded.
@@ -229,6 +231,8 @@ export class UserStore {
     const stored = Object.fromEntries(rows.map((r) => [r.key, JSON.parse(r.value)])) as Record<string, any>;
     const out: Settings = { ...DEFAULT_SETTINGS, channels: [...DEFAULT_SETTINGS.channels] };
     if (typeof stored.onePerViewer === 'boolean') out.onePerViewer = stored.onePerViewer;
+    if (Number.isInteger(stored.liveRows) && stored.liveRows >= 3 && stored.liveRows <= 100) out.liveRows = stored.liveRows;
+    if (Number.isInteger(stored.liveColumns) && stored.liveColumns >= 1 && stored.liveColumns <= 6) out.liveColumns = stored.liveColumns;
     if (typeof stored.catalog === 'string' && /^(anime|screen|games|custom-\d+)(\+(anime|screen|games|custom-\d+))*$/.test(stored.catalog)) out.catalog = stored.catalog;
     if (stored.tunnelProvider === 'cloudflare' || stored.tunnelProvider === 'ngrok') out.tunnelProvider = stored.tunnelProvider;
     if (typeof stored.ngrokToken === 'string') out.ngrokToken = stored.ngrokToken.trim();

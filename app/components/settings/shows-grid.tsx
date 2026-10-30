@@ -570,6 +570,7 @@ export default function ShowsGrid() {
           format: input.format,
           cover: input.cover,
           release: input.release,
+          tags: input.tags,
           ...(editing.split ? { split: true } : {}),
         });
       }

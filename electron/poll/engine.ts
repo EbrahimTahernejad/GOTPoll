@@ -587,11 +587,13 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
     // several catalogs: each has its own chips (only movies from IMDb, only movies from AniList…)
     const f = (this.pooled && this.filters.byCatalog?.[this.catalog.ownerOf?.(show.id) ?? '']) || this.filters;
     if (!f.formats.includes(show.format)) return false;
+    // "only Sports": a title needs at least one of the picked genres / tags
+    if (f.tags?.length && !show.tags?.some((t) => f.tags!.includes(t))) return false;
     // unknown release (old catalog): can't judge – count it
     return show.release === null || f.release.includes(show.release);
   }
 
-  /** What the viewer page gets; the live feed carries the top 40, "Show all" asks for more. */
+  /** What the viewer page gets; the live feed carries the top 40 (or as many as the board shows), "Show all" asks for more. */
   publicSnapshot(s = this.snapshot(), limit = 40): PublicSnapshot {
     const settings = this.user.settings();
     const enabled = settings.channels.filter((c) => c.enabled);
@@ -604,7 +606,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       endedAt: s.endedAt,
       totalVoters: s.totalVoters,
       totalVotes: s.totalVotes,
-      ranking: s.ranking.slice(0, limit).map((r) => ({ ...publicEntry(r, r.count), option: r.option, breakdown: r.breakdown })),
+      ranking: s.ranking.slice(0, Math.max(limit, settings.liveRows ?? 15)).map((r) => ({ ...publicEntry(r, r.count), option: r.option, breakdown: r.breakdown })),
       channels: enabled.map((c) => ({
         id: c.id,
         platform: c.platform,
@@ -612,6 +614,8 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
         name: enabled.filter((o) => o.platform === c.platform).length > 1 ? channelName(c) : null,
       })),
       tournament: null,
+      liveRows: settings.liveRows ?? 15,
+      liveColumns: settings.liveColumns ?? 2,
       catalog: { name: this.catalog.info().name ?? 'Anime', kind: this.catalog.info().kind ?? 'anilist' },
     };
   }

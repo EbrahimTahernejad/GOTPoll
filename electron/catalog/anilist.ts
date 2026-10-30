@@ -25,6 +25,8 @@ export type AniListMedia = {
   averageScore: number | null;
   favourites: number | null;
   coverImage: { large: string | null; extraLarge: string | null; color: string | null } | null;
+  genres?: string[] | null;
+  tags?: { name: string; rank: number; isAdult: boolean; isGeneralSpoiler: boolean; isMediaSpoiler: boolean }[] | null;
   relations: {
     edges: {
       relationType: string;
@@ -61,6 +63,7 @@ const FIELDS = `
   season seasonYear format status
   popularity averageScore favourites
   coverImage { large extraLarge color }
+  genres tags { name rank isAdult isGeneralSpoiler isMediaSpoiler }
   relations { edges { relationType(version: 2) node { id format type startDate { year } } } }
 `;
 

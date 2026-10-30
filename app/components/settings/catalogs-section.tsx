@@ -440,6 +440,7 @@ export function EntryDialog({
   const [format, setFormat] = useState<ShowFormat>('TV');
   const [release, setRelease] = useState<ShowRelease | ''>('');
   const [cover, setCover] = useState('');
+  const [tags, setTags] = useState('');
   const [uploading, setUploading] = useState(false);
   const file = useRef<HTMLInputElement>(null);
 
@@ -452,6 +453,7 @@ export function EntryDialog({
     setFormat(e?.format ?? 'TV');
     setRelease(e?.release ?? '');
     setCover(e?.coverImage ?? '');
+    setTags((e?.tags ?? []).join(', '));
   }, [entry]);
 
   const upload = async (f: File) => {
@@ -484,6 +486,10 @@ export function EntryDialog({
                 placeholder={'One per line, e.g.\nER\nElden'}
                 className="border-input placeholder:text-muted-foreground w-full rounded-md border bg-transparent px-3 py-2 text-sm"
               />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="entry-tags">Genres &amp; tags</Label>
+              <Input id="entry-tags" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Sports, Comedy – polls can count only these" />
             </div>
             <div className="flex gap-3">
               <div className="w-24 space-y-1">
@@ -588,6 +594,7 @@ export function EntryDialog({
                 format,
                 cover: cover || null,
                 release: release || null,
+                tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
               })
             }
           >

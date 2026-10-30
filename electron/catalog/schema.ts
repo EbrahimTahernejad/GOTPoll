@@ -21,7 +21,8 @@ export const CATALOG_SQL = `
     status TEXT,                           -- AniList: FINISHED / RELEASING / NOT_YET_RELEASED / HIATUS / CANCELLED
     popularity INTEGER NOT NULL DEFAULT 0,
     score INTEGER,
-    favourites INTEGER
+    favourites INTEGER,
+    tags TEXT NOT NULL DEFAULT '[]'        -- JSON array: genres first, then tags (AniList), IMDb genres, game genres
   );
   CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 `;
@@ -45,7 +46,21 @@ export type ShowRow = {
   popularity: number;
   score: number | null;
   favourites: number | null;
+  /** JSON array; absent in catalogs made before 0.7.1 */
+  tags?: string;
 };
+
+/** Older files (custom catalogs, the bundled seed) predate the tags column. */
+export function ensureColumns(db: Database.Database) {
+  const has = db.prepare("SELECT 1 FROM pragma_table_info('shows') WHERE name = 'tags'").get();
+  if (!has) db.exec("ALTER TABLE shows ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'");
+}
+
+/** AniList's genres, then its tags that matter (no spoilers, mostly about the show). */
+function aniListTags(m: AniListMedia): string[] {
+  const tags = (m.tags ?? []).filter((t) => t.rank >= 60 && !t.isAdult && !t.isGeneralSpoiler && !t.isMediaSpoiler).map((t) => t.name);
+  return [...new Set([...(m.genres ?? []), ...tags])];
+}
 
 const foldFormat = (f: string | null) =>
   f === 'ONA' || f === 'OVA' ? 'TV' : (f ?? 'TV');
@@ -83,15 +98,16 @@ export function mediaToRow(m: AniListMedia): ShowRow | null {
     popularity: m.popularity ?? 0,
     score: m.averageScore,
     favourites: m.favourites,
+    tags: JSON.stringify(aniListTags(m)),
   };
 }
 
 export function prepareUpsert(db: Database.Database) {
   const stmt = db.prepare(`
     INSERT INTO shows (id, title_romaji, title_english, title_native, synonyms, start_year, season,
-      format, raw_format, country, cover_image, cover_color, parent_id, status, popularity, score, favourites)
+      format, raw_format, country, cover_image, cover_color, parent_id, status, popularity, score, favourites, tags)
     VALUES (@id, @title_romaji, @title_english, @title_native, @synonyms, @start_year, @season,
-      @format, @raw_format, @country, @cover_image, @cover_color, @parent_id, @status, @popularity, @score, @favourites)
+      @format, @raw_format, @country, @cover_image, @cover_color, @parent_id, @status, @popularity, @score, @favourites, @tags)
     ON CONFLICT(id) DO UPDATE SET
       title_romaji = excluded.title_romaji, title_english = excluded.title_english,
       title_native = excluded.title_native, synonyms = excluded.synonyms,
@@ -99,10 +115,10 @@ export function prepareUpsert(db: Database.Database) {
       raw_format = excluded.raw_format, country = excluded.country,
       cover_image = excluded.cover_image, cover_color = excluded.cover_color,
       parent_id = excluded.parent_id, status = excluded.status, popularity = excluded.popularity,
-      score = excluded.score, favourites = excluded.favourites
+      score = excluded.score, favourites = excluded.favourites, tags = excluded.tags
   `);
   return db.transaction((rows: ShowRow[]) => {
-    for (const r of rows) stmt.run(r);
+    for (const r of rows) stmt.run({ ...r, status: r.status ?? null, tags: r.tags ?? '[]' });
   });
 }
 

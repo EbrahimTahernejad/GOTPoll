@@ -97,6 +97,7 @@ export const imdbSource: CatalogSource = {
         popularity: r[1],
         score: Math.round(r[0] * 10),
         favourites: null,
+        tags: JSON.stringify(c[8] && c[8] !== '\\N' ? c[8].split(',') : []),
       });
       kept++;
       if (batch.length >= 2000) {

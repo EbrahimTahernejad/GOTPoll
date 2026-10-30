@@ -171,8 +171,8 @@ export default function TournamentView({
           <ListOrdered className="h-4 w-4" /> Show all {t.allStandings.length}
         </button>
       )}
-      {/* the board shows the top 15; while nominations are live, everyone else is a click away */}
-      {interactive && t.screen === 'open' && snap.ranking.length > 15 && (
+      {/* the board shows the top few (the streamer's slider); while nominations are live, everyone else is a click away */}
+      {interactive && t.screen === 'open' && snap.ranking.length > (snap.liveRows ?? 15) && (
         <button
           onClick={() => setSummary('open')}
           className="fixed right-4 bottom-4 z-30 flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-sm font-bold text-black shadow-xl hover:bg-white/90"

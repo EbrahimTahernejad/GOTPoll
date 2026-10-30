@@ -78,7 +78,9 @@ Settings → **Catalogs**. All free; only IGDB uses a key, and it's optional.
 | Games | Wikidata (articles in 4+ Wikipedias), Steam's most-owned games (SteamSpy), box art from Wikipedia, merged into one list. Optional: paste a free Twitch developer app's client id and secret to add IGDB's games, names and covers. The keys stay on this computer. |
 | Your own | built in the app; any number |
 
-- **Pooling**: tick several catalogs on the Poll screen or in the tournament setup. Each one gets its own format and release chips, e.g. only movies from IMDb plus only movies from AniList.
+- **Pooling**: pick several catalogs on the Poll screen or in the tournament setup. Each one gets its own format, release and genre dropdowns, e.g. only movies from IMDb plus only movies from AniList.
+- **Genres & tags**: AniList genres and tags, IMDb genres, and game genres from Wikidata (and IGDB). Pick e.g. Sports and only titles tagged Sports count. Add your own tags to custom entries, or fix a title's tags in the Library.
+- **Board size**: the On screen and Columns sliders above the ranking set how many shows the viewer page shows (up to 100) and in how many columns. They change it live; a list taller than the screen scrolls.
 - **Editing**: in the Library, fix any title or add missing ones, and split a sequel into its own entry (Boruto out of Naruto). Edits live in `user.db` and survive catalog updates.
 
 ## Catalog updates (in-app)

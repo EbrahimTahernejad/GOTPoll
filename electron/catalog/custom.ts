@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { EventEmitter } from 'node:events';
-import { CATALOG_SQL, getMeta, prepareUpsert, setMeta, type ShowRow } from './schema.js';
+import { CATALOG_SQL, ensureColumns, getMeta, prepareUpsert, setMeta, type ShowRow } from './schema.js';
 import type { CatalogInfo } from './store.js';
 
 // A catalog the streamer builds in the app: games, characters, songs,
@@ -34,6 +34,7 @@ export class CustomCatalog extends EventEmitter<{ changed: [] }> {
     this.db = new Database(file);
     this.db.pragma('journal_mode = WAL');
     this.db.exec(CATALOG_SQL);
+    ensureColumns(this.db);
     if (init) setMeta(this.db, { number: init.number, name: init.name, created_at: Date.now(), updated_at: Date.now() });
     const meta = getMeta(this.db);
     this.number = Number(meta.number);
@@ -107,6 +108,7 @@ export class CustomCatalog extends EventEmitter<{ changed: [] }> {
       score: r.score,
       favourites: null,
       parentId: null,
+      tags: safeJson(r.tags ?? '[]'),
       eligible: true,
       release: r.status === 'FINISHED' ? 'released' : r.status === 'RELEASING' ? 'airing' : r.status === 'NOT_YET_RELEASED' ? 'upcoming' : null,
       custom: true,
@@ -164,6 +166,7 @@ export class CustomCatalog extends EventEmitter<{ changed: [] }> {
       popularity: 0,
       score: null,
       favourites: null,
+      tags: JSON.stringify(cleanTags(e.tags)),
     };
   }
 
@@ -172,6 +175,12 @@ export class CustomCatalog extends EventEmitter<{ changed: [] }> {
     this.cache = null;
     this.emit('changed');
   }
+}
+
+/** Tags the streamer typed: trimmed, unique, a sensible number. */
+export function cleanTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) return [];
+  return [...new Set(tags.map((t) => String(t).trim().slice(0, 40)).filter(Boolean))].slice(0, 30);
 }
 
 function safeJson(text: string): string[] {

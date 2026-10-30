@@ -25,6 +25,8 @@ declare global {
     eligible: boolean;
     /** null when the catalog predates release status (update it) */
     release: ShowRelease | null;
+    /** genres and tags (AniList genres + tags, IMDb genres, game genres, your own) – empty when unknown */
+    tags?: string[];
     custom?: boolean;
     /** changed by the streamer (built-in catalogs) */
     edited?: boolean;
@@ -47,6 +49,8 @@ declare global {
     /** null = no cover */
     cover?: string | null;
     release?: ShowRelease | null;
+    /** replaces the catalog's genres / tags */
+    tags?: string[];
     /** a sequel that counts on its own instead of for its franchise */
     split?: boolean;
   };
@@ -85,6 +89,8 @@ declare global {
     /** a link, or an image saved with catalogs.saveCover */
     cover: string | null;
     release: ShowRelease | null;
+    /** genres / tags polls can filter on */
+    tags?: string[];
   };
 
   /** option = its number in a shortlist poll (1-based) */
@@ -117,8 +123,10 @@ declare global {
   type PollFilters = {
     formats: ShowFormat[];
     release: ShowRelease[];
+    /** only titles with at least one of these genres / tags; empty or absent = any */
+    tags?: string[];
     /** several catalogs in use: each one's own chips, by catalog id (the ones above apply to a single catalog) */
-    byCatalog?: Record<string, { formats: ShowFormat[]; release: ShowRelease[] }>;
+    byCatalog?: Record<string, { formats: ShowFormat[]; release: ShowRelease[]; tags?: string[] }>;
   };
 
   /**
@@ -192,6 +200,9 @@ declare global {
     channels: PublicChannel[];
     /** an open tournament takes over the viewer page */
     tournament: PublicTournament | null;
+    /** how many shows the board shows, in how many columns (the streamer moves both live) */
+    liveRows: number;
+    liveColumns: number;
     /** what chat is voting from – sets the wording ("anime", "movie or show", …) */
     catalog: { name: string; kind: CatalogKind };
   };
@@ -501,6 +512,10 @@ declare global {
     embedModel: 'minilm' | 'e5';
     /** 'auto' = biggest that fits the GPU (7B on an 8 GB card) */
     llmModel: 'auto' | 'qwen-1.5b' | 'qwen-3b' | 'qwen-7b';
+    /** how many shows the viewer page's board shows (3–100) */
+    liveRows: number;
+    /** columns for the board's list under the top three (1–6); it scrolls when they don't fit */
+    liveColumns: number;
     /** one vote per viewer – a new vote replaces their previous one */
     onePerViewer: boolean;
     /** the catalog in use: 'anime', 'screen', 'games' or 'custom-N' – several joined by '+' */

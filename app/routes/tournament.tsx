@@ -49,23 +49,14 @@ import { Input } from '~/components/ui/input';
 import useLiveTime from '~/hooks/useLiveTime';
 import useCatalog from '~/hooks/useCatalog';
 import useCatalogs from '~/hooks/useCatalogs';
-import { CatalogPicker, PartFilters } from '~/components/poll/catalog-filters';
+import { CatalogPicker, GroupFilters, PooledFilters } from '~/components/poll/catalog-filters';
+import LiveRows from '~/components/poll/live-rows';
 import useLibrary from '~/hooks/useLibrary';
 import usePoll from '~/hooks/usePoll';
 import useTournament from '~/hooks/useTournament';
 import { channelsOf, matchLabel, sourceUrl } from '~/lib/tournament';
 import { cn } from '~/lib/utils';
 
-const FORMATS: { id: ShowFormat; label: string }[] = [
-  { id: 'TV', label: 'TV' },
-  { id: 'MOVIE', label: 'Movie' },
-  { id: 'TV_SHORT', label: 'Short' },
-];
-const RELEASES: { id: ShowRelease; label: string }[] = [
-  { id: 'released', label: 'Released' },
-  { id: 'airing', label: 'Airing' },
-  { id: 'upcoming', label: 'Upcoming' },
-];
 const STEPS: { phase: TournamentPhase[]; label: string }[] = [
   { phase: ['open'], label: 'Open round' },
   { phase: ['open-results'], label: 'Qualifiers' },
@@ -307,11 +298,6 @@ function Setup({
   useEffect(() => setTitle(d.title), [d.title]);
   const set = (patch: Partial<TournamentConfig>) => act({ type: 'draft', patch });
   const spots = d.size - d.carried.length;
-  const toggle = <K extends 'formats' | 'release'>(key: K, value: PollFilters[K][number]) => {
-    const list = d.filters[key] as string[];
-    const next = list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
-    if (next.length) void set({ filters: { ...d.filters, [key]: next } });
-  };
   const runnersUp = (n: number) => [...new Set(snap.history.slice(0, n).map((h) => h.runnerUp))].filter((id) => library.has(id));
 
   return (
@@ -326,6 +312,7 @@ function Setup({
               className="h-8 w-72"
             />
           </FilterGroup>
+          <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
           <FilterGroup label={`Bracket · ${d.size} shows`}>
             {[4, 8, 16, 32].map((n) => (
               <FilterChip key={n} on={d.size === n} onClick={() => set({ size: n })}>
@@ -362,27 +349,22 @@ function Setup({
               Play for third
             </FilterChip>
           </FilterGroup>
-          <CatalogPicker catalogs={catalogs} lockedTitle="" />
-          {(catalogInfo?.parts.length ?? 1) > 1 ? (
-            catalogInfo!.parts.map((p) => <PartFilters key={p.id} part={p} filters={d.filters} onChange={(filters) => void set({ filters })} />)
-          ) : (
-          <FilterGroup label={`Open round counts · ${catalogInfo?.name ?? ''}`}>
-            {(catalogInfo?.formats ?? FORMATS).map((f) => (
-              <FilterChip key={f.id} on={d.filters.formats.includes(f.id)} onClick={() => toggle('formats', f.id)}>
-                {f.label}
-              </FilterChip>
-            ))}
-            {catalogInfo?.releases !== false && <span className="bg-foreground/10 mx-1 h-4 w-px" />}
-            {(catalogInfo?.releases !== false ? RELEASES : []).map((r) => (
-              <FilterChip key={r.id} on={d.filters.release.includes(r.id)} onClick={() => toggle('release', r.id)}>
-                {r.label}
-              </FilterChip>
-            ))}
-          </FilterGroup>
-          )}
+          </div>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
+            <CatalogPicker catalogs={catalogs} lockedTitle="" />
+            {(catalogInfo?.parts.length ?? 1) > 1 ? (
+              <PooledFilters parts={catalogInfo!.parts} filters={d.filters} onChange={(filters) => void set({ filters })} />
+            ) : (
+            <FilterGroup label="Open round counts">
+              {catalogInfo?.parts[0] && (
+                <GroupFilters part={catalogInfo.parts[0]} group={d.filters} onChange={(g) => void set({ filters: { ...d.filters, ...g } })} />
+              )}
+            </FilterGroup>
+            )}
+          </div>
           <FilterGroup
             label={`Returning shows · ${d.carried.length}`}
             note={
@@ -542,6 +524,7 @@ function OpenRound({
           </div>
         )}
         <div className="grow" />
+        {live && <LiveRows />}
         {live ? (
           <>
             <Button variant="outline" disabled={pending !== null} onClick={() => act({ type: 'retry-open' })} title="Throw away the votes and start again">

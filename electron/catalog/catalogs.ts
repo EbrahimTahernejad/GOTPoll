@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { CoverResolver } from './covers.js';
-import { CustomCatalog, customNumberOf, isCustomId } from './custom.js';
+import { cleanTags, CustomCatalog, customNumberOf, isCustomId } from './custom.js';
 import { GAME_FORMATS, isGameId, makeGamesSource, type IgdbKeys } from './games.js';
 import { IMDB_FORMATS, imdbSource, isImdbId } from './imdb.js';
 import { CatalogStore, type CatalogInfo, type UpdateStatus } from './store.js';
@@ -33,7 +33,15 @@ export type SelectedCatalogInfo = CatalogInfo & {
   parts: CatalogPart[];
 };
 
-export type CatalogPart = { id: string; name: string; kind: CatalogKind; formats: FormatLabel[]; releases: boolean };
+export type CatalogPart = {
+  id: string;
+  name: string;
+  kind: CatalogKind;
+  formats: FormatLabel[];
+  releases: boolean;
+  /** the genres / tags its votable titles carry, most used first (empty: nothing to filter on) */
+  tags: { name: string; count: number }[];
+};
 
 const MIX = '+';
 /** one empty list, so the overlay cache sees "no additions" as unchanged */
@@ -85,6 +93,7 @@ function cleanOverride(o: ShowOverride): ShowOverride | null {
   if (o.format && ['TV', 'TV_SHORT', 'MOVIE'].includes(o.format)) out.format = o.format;
   if (o.cover === null || typeof o.cover === 'string') out.cover = o.cover?.trim() || null;
   if (o.release === null || (o.release && ['released', 'airing', 'upcoming'].includes(o.release))) out.release = o.release;
+  if (Array.isArray(o.tags)) out.tags = cleanTags(o.tags);
   if (o.split) out.split = true;
   return Object.keys(out).length ? out : null;
 }
@@ -231,7 +240,19 @@ export class Catalogs extends EventEmitter<{
     const formats =
       id === 'anime' ? ANIME_FORMATS : id === 'screen' ? IMDB_FORMATS : id === 'games' ? GAME_FORMATS : this.custom(id).formats();
     const releases = isBuiltIn(id) ? true : this.custom(id).all().some((s) => s.release !== null);
-    return { id, name: this.nameOf(id), kind: this.kindOf(id), formats, releases };
+    return { id, name: this.nameOf(id), kind: this.kindOf(id), formats, releases, tags: this.tagsOf(this.showsOf(id)) };
+  }
+
+  private tagLists = new WeakMap<Show[], { name: string; count: number }[]>();
+  private tagsOf(shows: Show[]) {
+    let out = this.tagLists.get(shows);
+    if (!out) {
+      const counts = new Map<string, number>();
+      for (const s of shows) if (s.eligible) for (const t of s.tags ?? []) counts.set(t, (counts.get(t) ?? 0) + 1);
+      out = [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      this.tagLists.set(shows, out);
+    }
+    return out;
   }
 
   /** The chatter guard's popularity floor for a catalog (the lowest of a mix). */
@@ -345,6 +366,7 @@ export class Catalogs extends EventEmitter<{
         format: o.format ?? s.format,
         coverImage: o.cover !== undefined ? o.cover : s.coverImage,
         release: o.release !== undefined ? o.release : s.release,
+        tags: o.tags ?? s.tags,
         eligible: s.eligible || !!o.split,
         split: !!o.split && !s.eligible,
         edited: Object.keys(o).some((k) => k !== 'split'),
