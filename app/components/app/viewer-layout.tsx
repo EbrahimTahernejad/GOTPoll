@@ -13,24 +13,49 @@ import { cn } from '~/lib/utils';
 type Layout = Pick<Settings, 'liveRows' | 'liveColumns' | 'layoutPreset' | 'layouts'>;
 type Key = keyof ViewerFreeSpace;
 
-// where the streamer's overlay sits on each scene (% of the viewer page) – what the defaults are made for
-const PRESETS: { id: LayoutPreset; name: string; hint: string; overlay: { label: string; tone: 'cam' | 'chat'; left: number; top: number; right: number; bottom: number }[] }[] = [
+type Rect = { left: number; top: number; right: number; bottom: number };
+
+// Each scene as it looks on stream (% of the stream): where the viewer page
+// sits, the streamer's camera / chat / small screen, and the scene's own bars.
+// The defaults are made for these.
+const PRESETS: {
+  id: LayoutPreset;
+  name: string;
+  hint: string;
+  /** where the viewer page is on the stream */
+  page: Rect;
+  overlay: (Rect & { label: string; tone: 'cam' | 'chat'; vertical?: boolean })[];
+  /** the scene's own frame and bars – not covering the page, drawn so the scene is recognisable */
+  chrome: Rect[];
+}[] = [
   {
     id: 'full',
     name: 'Full screen',
     hint: 'camera top-right, chat below it',
+    page: { left: 0, top: 0, right: 0, bottom: 0 },
     overlay: [
       { label: 'CAMERA', tone: 'cam', left: 65, top: 0, right: 0, bottom: 58 },
-      { label: 'CHAT', tone: 'chat', left: 84, top: 42, right: 0, bottom: 0 },
+      { label: 'CHAT', tone: 'chat', left: 84, top: 42, right: 0, bottom: 0, vertical: true },
     ],
+    chrome: [],
   },
   {
     id: 'framed',
     name: 'Big screen',
-    hint: 'vote in the big frame, face in the small box',
-    overlay: [{ label: 'FACE', tone: 'cam', left: 74, top: 63, right: 0, bottom: 0 }],
+    hint: 'vote in the big frame, face in the small screen',
+    page: { left: 1.75, top: 12.4, right: 25.25, bottom: 15.2 },
+    overlay: [
+      { label: 'CHAT', tone: 'chat', left: 77.5, top: 11.5, right: 0.5, bottom: 45 },
+      { label: 'FACE', tone: 'cam', left: 55.75, top: 57.9, right: 3.25, bottom: 5 },
+    ],
+    chrome: [
+      { left: 0, top: 0, right: 0, bottom: 90.3 },
+      { left: 0, top: 87, right: 61, bottom: 4 },
+    ],
   },
 ];
+
+const pct = (r: Rect) => ({ left: `${r.left}%`, top: `${r.top}%`, right: `${r.right}%`, bottom: `${r.bottom}%` });
 
 const SCREENS: { title: string; hint?: string; sliders: { key: Key; label: string }[]; sketch: (f: ViewerFreeSpace, l: Layout) => React.ReactNode }[] = [
   {
@@ -91,7 +116,9 @@ export default function ViewerLayoutButton() {
                     p.id === l.layoutPreset ? 'border-foreground bg-foreground/[0.06]' : 'hover:bg-foreground/[0.03] opacity-70'
                   )}
                 >
-                  <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded border bg-[#0d0b18]">
+                  <div className={cn('relative aspect-video w-20 shrink-0 overflow-hidden rounded border', p.chrome.length ? 'bg-emerald-950' : 'bg-[#0d0b18]')}>
+                    <Chrome preset={p} />
+                    <div className={cn('absolute bg-[#0d0b18]', p.chrome.length > 0 && 'ring-1 ring-emerald-400/70')} style={pct(p.page)} />
                     <Overlay preset={p} />
                   </div>
                   <div className="min-w-0">
@@ -152,13 +179,27 @@ function Row({ label, value, unit = '', min = 0, max, onChange }: { label: strin
 
 // ---------------------------------------------------------------- sketches
 
-/** A 16:9 viewer page with the scene's camera (and chat) on top. */
+/** The scene on stream: its bars, the viewer page in its place (the sketch), and the camera / chat on top. */
 function Frame({ preset, children }: { preset: (typeof PRESETS)[number]; children: React.ReactNode }) {
+  const framed = preset.chrome.length > 0;
   return (
-    <div className="relative aspect-video w-56 shrink-0 self-start overflow-hidden rounded-md border bg-[#0d0b18]">
-      {children}
+    <div className={cn('relative aspect-video w-56 shrink-0 self-start overflow-hidden rounded-md border', framed ? 'bg-emerald-950' : 'bg-[#0d0b18]')}>
+      <Chrome preset={preset} />
+      <div className={cn('absolute overflow-hidden bg-[#0d0b18]', framed && 'rounded-[2px] ring-1 ring-emerald-400/70')} style={pct(preset.page)}>
+        {children}
+      </div>
       <Overlay preset={preset} labels />
     </div>
+  );
+}
+
+function Chrome({ preset }: { preset: (typeof PRESETS)[number] }) {
+  return (
+    <>
+      {preset.chrome.map((c, i) => (
+        <div key={i} className="absolute bg-emerald-500/35" style={pct(c)} />
+      ))}
+    </>
   );
 }
 
@@ -171,9 +212,11 @@ function Overlay({ preset, labels }: { preset: (typeof PRESETS)[number]; labels?
           className={cn(
             'absolute grid place-items-center text-[9px] font-bold tracking-widest',
             o.tone === 'cam' ? 'border-2 border-amber-300/80 bg-amber-300/15 text-amber-200' : 'border-2 border-sky-300/80 bg-sky-300/15 text-sky-200',
-            o.tone === 'chat' && '[writing-mode:vertical-rl]'
+            o.vertical && '[writing-mode:vertical-rl]',
+            // the face sits on top of the page; the rest is beside it
+            o.tone === 'cam' && 'bg-[#2a2410]/90'
           )}
-          style={{ left: `${o.left}%`, top: `${o.top}%`, right: `${o.right}%`, bottom: `${o.bottom}%` }}
+          style={pct(o)}
         >
           {labels && o.label}
         </div>
