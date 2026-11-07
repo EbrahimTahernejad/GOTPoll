@@ -81,6 +81,7 @@ Settings → **Catalogs**. All free; only IGDB uses a key, and it's optional.
 - **Pooling**: pick several catalogs on the Poll screen or in the tournament setup. Each one gets its own format, release and genre dropdowns, e.g. only movies from IMDb plus only movies from AniList.
 - **Genres & tags**: AniList genres and tags, IMDb genres, and game genres from Wikidata (and IGDB). Pick e.g. Sports and only titles tagged Sports count. Add your own tags to custom entries, or fix a title's tags in the Library.
 - **Board size**: the On screen and Columns sliders above the ranking set how many shows the viewer page shows (up to 100) and in how many columns. They change it live; a list taller than the screen scrolls.
+- **Room for your camera and chat**: title bar → **Layout**. Two scenes, *Full screen* (camera top-right, chat below it) and *Big screen* (the page in the big frame, your face in a small box at the bottom right). Pick which one is live, and per screen (board top bar / top three / rows, final results, bracket, 1v1, coin flip, cage draw, others) how much of the right side to keep free. Previews draw your camera and chat on each screen. Phones on the public link always get the whole screen.
 - **Editing**: in the Library, fix any title or add missing ones, and split a sequel into its own entry (Boruto out of Naruto). Edits live in `user.db` and survive catalog updates.
 
 ## Catalog updates (in-app)

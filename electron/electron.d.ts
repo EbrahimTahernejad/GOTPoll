@@ -165,6 +165,35 @@ declare global {
 
   type PollOwner = 'poll' | 'tournament';
 
+  /**
+   * Room on the right of the viewer page for the streamer's own overlay
+   * (camera top-right, chat below), as % of the width (0–50), per screen.
+   */
+  /**
+   * The streamer's two scenes:
+   *   full    the viewer page fills the stream; camera top-right, chat below it
+   *   framed  the viewer page sits in the big frame; a small face box covers its bottom-right
+   */
+  type LayoutPreset = 'full' | 'framed';
+
+  type ViewerFreeSpace = {
+    /** the top bar */
+    nav: number;
+    /** the board (poll and tournament open round): the top three, and the rows below */
+    top: number;
+    rows: number;
+    /** the poll's final reveal and the tournament's champion */
+    final: number;
+    bracket: number;
+    coin: number;
+    /** versus polls, the 1v1 intro and the 1v1 */
+    versus: number;
+    /** the cage draw on the qualifying line */
+    draw: number;
+    /** qualifiers, report, "the poll opens soon" */
+    other: number;
+  };
+
   type PublicEntry = {
     id: number;
     title: string;
@@ -203,6 +232,8 @@ declare global {
     /** how many shows the board shows, in how many columns (the streamer moves both live) */
     liveRows: number;
     liveColumns: number;
+    /** % of the width left free on the right of each screen for the streamer's overlay */
+    freeSpace: ViewerFreeSpace;
     /** what chat is voting from – sets the wording ("anime", "movie or show", …) */
     catalog: { name: string; kind: CatalogKind };
   };
@@ -516,6 +547,10 @@ declare global {
     liveRows: number;
     /** columns for the board's list under the top three (1–6); it scrolls when they don't fit */
     liveColumns: number;
+    /** which of the streamer's scenes the viewer page is laid out for */
+    layoutPreset: LayoutPreset;
+    /** per scene: % of the width kept free on the right of each viewer screen for the camera / chat */
+    layouts: Record<LayoutPreset, ViewerFreeSpace>;
     /** one vote per viewer – a new vote replaces their previous one */
     onePerViewer: boolean;
     /** the catalog in use: 'anime', 'screen', 'games' or 'custom-N' – several joined by '+' */

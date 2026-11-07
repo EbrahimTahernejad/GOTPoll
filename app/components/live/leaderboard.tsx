@@ -172,7 +172,7 @@ function HeroCard({
       exit={{ opacity: 0, scale: 0.9, filter: 'blur(8px)' }}
       transition={SPRING}
       className={cn(
-        'relative flex min-w-0 gap-[1.1vw] overflow-hidden rounded-[1.4vw] border border-white/10 bg-white/[0.045] p-[0.9vw] backdrop-blur-xl',
+        'relative flex min-w-0 gap-[calc(1.1vw*var(--k,1))] overflow-hidden rounded-[calc(1.4vw*var(--k,1))] border border-white/10 bg-white/[0.045] p-[calc(0.9vw*var(--k,1))] backdrop-blur-xl',
         lead && 'live-leader'
       )}
       style={{ ['--medal' as string]: medal }}
@@ -187,41 +187,41 @@ function HeroCard({
           entry={entry}
           layoutId={`cover-${entry.id}`}
           className={cn(
-            'aspect-[3/4] rounded-[0.9vw] shadow-2xl shadow-black/60',
-            lead ? 'w-[10.5vw]' : 'w-[8.5vw]'
+            'aspect-[3/4] rounded-[calc(0.9vw*var(--k,1))] shadow-2xl shadow-black/60',
+            lead ? 'w-[calc(10.5vw*var(--k,1))]' : 'w-[calc(8.5vw*var(--k,1))]'
           )}
         />
         <div
-          className="absolute -top-[0.5vw] -left-[0.5vw] grid h-[2.6vw] w-[2.6vw] place-items-center rounded-full text-[1.25vw] font-black text-black shadow-xl"
+          className="absolute -top-[calc(0.5vw*var(--k,1))] -left-[calc(0.5vw*var(--k,1))] grid h-[calc(2.6vw*var(--k,1))] w-[calc(2.6vw*var(--k,1))] place-items-center rounded-full text-[calc(1.25vw*var(--k,1))] font-black text-black shadow-xl"
           style={{ background: `radial-gradient(circle at 30% 30%, #fff8, transparent 60%), ${medal}` }}
         >
           {rank + 1}
         </div>
       </div>
-      <div className="relative flex min-w-0 flex-1 flex-col py-[0.2vw]">
-        <div className={cn('line-clamp-2 leading-tight font-bold text-white', lead ? 'text-[1.45vw]' : 'text-[1.15vw]')}>
+      <div className="relative flex min-w-0 flex-1 flex-col py-[calc(0.2vw*var(--k,1))]">
+        <div className={cn('line-clamp-2 leading-tight font-bold text-white', lead ? 'text-[calc(1.45vw*var(--k,1))]' : 'text-[calc(1.15vw*var(--k,1))]')}>
           {entry.option !== undefined && <OptionTag n={entry.option} />}
           {entry.title}
         </div>
-        {entry.subtitle && <div className="truncate text-[0.8vw] text-white/55">{entry.subtitle}</div>}
+        {entry.subtitle && <div className="truncate text-[calc(0.8vw*var(--k,1))] text-white/55">{entry.subtitle}</div>}
         <div className="mt-auto flex items-end justify-between gap-2">
-          <div className="relative flex items-baseline gap-[0.4vw]">
+          <div className="relative flex items-baseline gap-[calc(0.4vw*var(--k,1))]">
             <AnimatedNumber
               value={entry.count}
-              className={cn('leading-none font-black tabular-nums text-white', lead ? 'text-[3.4vw]' : 'text-[2.6vw]')}
+              className={cn('leading-none font-black tabular-nums text-white', lead ? 'text-[calc(3.4vw*var(--k,1))]' : 'text-[calc(2.6vw*var(--k,1))]')}
             />
-            <span className="text-[0.75vw] tracking-widest text-white/50 uppercase">votes</span>
+            <span className="text-[calc(0.75vw*var(--k,1))] tracking-widest text-white/50 uppercase">votes</span>
             <Bump count={entry.count} />
           </div>
-          <div className="flex flex-col items-end gap-[0.2vw]">
+          <div className="flex flex-col items-end gap-[calc(0.2vw*var(--k,1))]">
             <CutTag cut={cut} />
             <Move move={move} />
-            <span className="text-[1.1vw] font-semibold tabular-nums" style={{ color: medal }}>
+            <span className="text-[calc(1.1vw*var(--k,1))] font-semibold tabular-nums" style={{ color: medal }}>
               {pct}%
             </span>
           </div>
         </div>
-        <div className="mt-[0.6vw] h-[0.35vw] overflow-hidden rounded-full bg-white/10">
+        <div className="mt-[calc(0.6vw*var(--k,1))] h-[calc(0.35vw*var(--k,1))] overflow-hidden rounded-full bg-white/10">
           <motion.div
             className="h-full rounded-full"
             style={{ background: `linear-gradient(90deg, ${medal}, #fff)` }}
@@ -321,7 +321,12 @@ export default function Leaderboard({
 
   return (
     <LayoutGroup>
-      <div className="relative grid grid-cols-[1.25fr_1fr_1fr] gap-[1.4vw]">
+      {/* room on the right for the streamer's camera / chat (app → Layout) */}
+      {/* (--k: the cards shrink with the room they have, so nothing gets clipped) */}
+      <div
+        className="relative grid grid-cols-[1.25fr_1fr_1fr] gap-[1.4vw]"
+        style={{ marginRight: 'var(--free-top, 0vw)', ['--k' as string]: 'max(0.6, 1 - var(--free-top-n, 0))' }}
+      >
         <AnimatePresence mode="popLayout">
           {top.map((e, i) => (
             <HeroCard key={e.id} entry={e} rank={i} total={snap.totalVotes} move={moves.get(e.id)} cut={cutOf(i)} />
@@ -330,7 +335,7 @@ export default function Leaderboard({
       </div>
       {rest.length > 0 && (
         // layoutScroll: rows animate between places measured inside the scroller, not the page
-        <motion.div layoutScroll className="mt-[1.4vw] min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
+        <motion.div layoutScroll className="mt-[1.4vw] min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]" style={{ marginRight: 'var(--free-rows, 0vw)' }}>
           <ul className="relative grid gap-x-[1.6vw] gap-y-[0.5vw]" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
             <AnimatePresence mode="popLayout">
               {rest.map((e, i) => (

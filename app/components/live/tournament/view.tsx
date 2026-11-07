@@ -15,6 +15,7 @@ import IntroScreen from './intro';
 import QualifiersScreen from './qualifiers';
 import Summary from './summary';
 import ReportScreen from './report';
+import { freeVarOf } from '../free-space';
 
 // The viewer page while a tournament is open. Each screen is a full layer;
 // switching crossfades them while covers with the same show morph from one
@@ -85,7 +86,11 @@ export default function TournamentView({
     <div className="live-root relative h-screen w-full overflow-hidden text-white select-none">
       {!transparent && <Backdrop entry={backdrop} />}
 
-      <header className="fixed inset-x-0 top-0 z-30 flex items-center gap-[1vw] border-b border-white/[0.06] bg-[#07060d]/40 px-[2.4vw] py-[1.1vw] backdrop-blur-xl backdrop-saturate-150">
+      <header
+        className="fixed inset-x-0 top-0 z-30 flex items-center gap-[1vw] border-b border-white/[0.06] bg-[#07060d]/40 px-[2.4vw] py-[1.1vw] backdrop-blur-xl backdrop-saturate-150"
+        // the streamer's camera may sit top-right (app → Layout → top bar)
+        style={{ paddingRight: 'calc(2.4vw + var(--free-nav, 0vw))' }}
+      >
         <div className="h-[3.4vw] w-[3.4vw] bg-[url(/icon.png)] bg-cover bg-center bg-no-repeat drop-shadow-xl" />
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-[1.6vw] leading-tight font-black tracking-tight">{t.title}</span>
@@ -135,6 +140,8 @@ export default function TournamentView({
           <motion.main
             key={layer}
             className="absolute inset-0 z-10"
+            // room for the streamer's overlay, per screen (app → Layout); the open round's board handles its own rows
+            style={freeVarOf(t.screen) ? { right: `var(${freeVarOf(t.screen)}, 0vw)` } : undefined}
             // bracket ⇄ VS ⇄ voting: a plain crossfade, the covers morph across.
             // Anything else: a deeper blur-and-zoom change of scene.
             initial={morph ? { opacity: 0 } : { opacity: 0, scale: 1.04, filter: 'blur(14px)' }}

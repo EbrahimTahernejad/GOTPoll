@@ -616,6 +616,7 @@ export class PollEngine extends EventEmitter<{ update: [PollSnapshot] }> {
       tournament: null,
       liveRows: settings.liveRows ?? 15,
       liveColumns: settings.liveColumns ?? 2,
+      freeSpace: settings.layouts?.[settings.layoutPreset],
       catalog: { name: this.catalog.info().name ?? 'Anime', kind: this.catalog.info().kind ?? 'anilist' },
     };
   }

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router';
 import { CatalogPill } from '~/components/app/catalog-status';
 import { TitleBarContent } from '~/components/app/title-bar';
+import ViewerLayoutButton from '~/components/app/viewer-layout';
 import { ShareLinks, useShare } from '~/components/share/share-panel';
 import { Button } from '~/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
@@ -44,6 +45,7 @@ export default function AppHeader() {
       <div className="grow" />
       <div className="mr-2 flex items-center gap-2">
         <CatalogPill />
+        <ViewerLayoutButton />
         <ShareButton />
         <Button variant="ghost" size="icon" asChild className="pointer-events-auto [app-region:no-drag]">
           <Link to="/settings">

@@ -59,8 +59,8 @@ export default function FinalReveal({
     <div className="relative flex flex-1 flex-col items-center">
       <Confetti ref={confetti} />
 
-      {/* headline */}
-      <div className="relative h-[6.5vw] w-full">
+      {/* headline – the top row and the rest keep clear of the streamer's overlay (app → Layout) */}
+      <div className="relative h-[6.5vw] w-full" style={{ paddingRight: 'var(--free-final, 0vw)' }}>
         <AnimatePresence mode="wait">
           {step < 4 ? (
             <motion.div
@@ -118,7 +118,11 @@ export default function FinalReveal({
       </div>
 
       {/* podium: 2 · 1 · 3 */}
-      <div className="mt-[0.6vw] grid w-full max-w-[70vw] grid-cols-[1fr_1.25fr_1fr] items-end gap-[2vw]">
+      <div
+        className="mt-[0.6vw] grid w-full max-w-[70vw] grid-cols-[1fr_1.25fr_1fr] items-end gap-[2vw]"
+        // centred in what's left of the width: shift left by half the free space, and fit inside it
+        style={{ maxWidth: 'min(70vw, calc(100% - var(--free-final, 0vw)))', transform: 'translateX(calc(var(--free-final, 0vw) / -2))' }}
+      >
         <Podium entry={second} rank={1} show={step >= 3} total={snap.totalVotes} height="6vw" />
         <Podium entry={first} rank={0} show={step >= 5} total={snap.totalVotes} height="8.5vw" />
         <Podium entry={third} rank={2} show={step >= 2} total={snap.totalVotes} height="4vw" />
@@ -132,6 +136,7 @@ export default function FinalReveal({
             animate="show"
             variants={{ show: { transition: { staggerChildren: 0.08 } } }}
             className="mt-[1.2vw] grid w-full max-w-[78vw] grid-cols-3 gap-x-[1.4vw] gap-y-[0.5vw]"
+            style={{ maxWidth: 'min(78vw, calc(100% - var(--free-final, 0vw)))', transform: 'translateX(calc(var(--free-final, 0vw) / -2))' }}
           >
             {rest.map((e, i) => (
               <motion.li

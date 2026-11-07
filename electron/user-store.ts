@@ -24,6 +24,13 @@ const DEFAULT_SETTINGS: Settings = {
   onePerViewer: false,
   liveRows: 15,
   liveColumns: 2,
+  layoutPreset: 'full',
+  layouts: {
+    // a camera across the right third of the top, a chat column below it
+    full: { nav: 35, top: 35, rows: 16, final: 35, bracket: 35, coin: 35, versus: 0, draw: 35, other: 35 },
+    // the page in the big frame, the face box over its bottom-right quarter
+    framed: { nav: 0, top: 0, rows: 26, final: 26, bracket: 26, coin: 0, versus: 26, draw: 26, other: 26 },
+  },
   catalog: 'anime',
   // romaji-aware by default: multilingual embeddings + a local LLM judge.
   // Falls back to classic on its own until the models are downloaded.
@@ -232,6 +239,18 @@ export class UserStore {
     const out: Settings = { ...DEFAULT_SETTINGS, channels: [...DEFAULT_SETTINGS.channels] };
     if (typeof stored.onePerViewer === 'boolean') out.onePerViewer = stored.onePerViewer;
     if (Number.isInteger(stored.liveRows) && stored.liveRows >= 3 && stored.liveRows <= 100) out.liveRows = stored.liveRows;
+    if (stored.layoutPreset === 'full' || stored.layoutPreset === 'framed') out.layoutPreset = stored.layoutPreset;
+    if (stored.layouts && typeof stored.layouts === 'object') {
+      out.layouts = { ...DEFAULT_SETTINGS.layouts };
+      for (const p of ['full', 'framed'] as const) {
+        const fs = { ...DEFAULT_SETTINGS.layouts[p] };
+        for (const k of Object.keys(fs) as (keyof ViewerFreeSpace)[]) {
+          const v = stored.layouts[p]?.[k];
+          if (Number.isInteger(v) && v >= 0 && v <= 50) fs[k] = v;
+        }
+        out.layouts[p] = fs;
+      }
+    }
     if (Number.isInteger(stored.liveColumns) && stored.liveColumns >= 1 && stored.liveColumns <= 6) out.liveColumns = stored.liveColumns;
     if (typeof stored.catalog === 'string' && /^(anime|screen|games|custom-\d+)(\+(anime|screen|games|custom-\d+))*$/.test(stored.catalog)) out.catalog = stored.catalog;
     if (stored.tunnelProvider === 'cloudflare' || stored.tunnelProvider === 'ngrok') out.tunnelProvider = stored.tunnelProvider;

@@ -135,7 +135,7 @@ ipcMain.handle('settings:set', (_, patch: Partial<Settings>) => {
   // switching provider / token while online: reopen with the new settings
   if (('tunnelProvider' in patch || 'ngrokToken' in patch) && tunnel.running) void startTunnel();
   // the viewer page follows the slider right away
-  if ('liveRows' in patch || 'liveColumns' in patch) poll.refresh();
+  if (['liveRows', 'liveColumns', 'layoutPreset', 'layouts'].some((k) => k in patch)) poll.refresh();
   if ('channels' in patch) {
     poll.applyChannels(); // connect / disconnect live, mid-poll
     warmUpRumble();

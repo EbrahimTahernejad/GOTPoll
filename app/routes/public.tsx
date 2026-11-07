@@ -5,6 +5,7 @@ import TournamentView from '~/components/live/tournament/view';
 import FinalReveal from '~/components/live/final-reveal';
 import Leaderboard from '~/components/live/leaderboard';
 import Versus from '~/components/live/versus';
+import useFreeSpace from '~/components/live/free-space';
 import useLiveRanking from '~/hooks/useLiveRanking';
 import useLiveTime from '~/hooks/useLiveTime';
 
@@ -26,6 +27,8 @@ export default function Public() {
   const [transparent] = useState(
     () => typeof location !== 'undefined' && new URLSearchParams(location.search).has('transparent')
   );
+  // room on the right for the streamer's camera / chat (set in the app)
+  useFreeSpace(snap);
   const [winner, setWinner] = useState<PublicEntry | null>(null);
   const time = useLiveTime(snap?.startedAt ?? null, snap?.endedAt ?? null);
 
@@ -55,7 +58,11 @@ export default function Public() {
       {!transparent && <Backdrop entry={backdrop} />}
 
       {/* fixed, blurred top bar – content (and the versus art) runs underneath */}
-      <header className="fixed inset-x-0 top-0 z-30 flex items-center gap-[1vw] border-b border-white/[0.06] bg-[#07060d]/40 px-[2.4vw] py-[1.1vw] backdrop-blur-xl backdrop-saturate-150">
+      <header
+        className="fixed inset-x-0 top-0 z-30 flex items-center gap-[1vw] border-b border-white/[0.06] bg-[#07060d]/40 px-[2.4vw] py-[1.1vw] backdrop-blur-xl backdrop-saturate-150"
+        // the streamer's camera may sit top-right (app → Layout → top bar)
+        style={{ paddingRight: 'calc(2.4vw + var(--free-nav, 0vw))' }}
+      >
         <div className="h-[3.4vw] w-[3.4vw] bg-[url(/icon.png)] bg-cover bg-center bg-no-repeat drop-shadow-xl" />
         <div className="flex flex-col">
           <span className="text-[1.6vw] leading-tight font-black tracking-tight">{snap?.title ?? 'Anime Poll'}</span>
@@ -88,6 +95,7 @@ export default function Public() {
             <motion.div
               key="idle"
               className="flex flex-1 flex-col items-center justify-center gap-[1.2vw]"
+              style={{ paddingRight: 'var(--free-other, 0vw)' }}
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.04, filter: 'blur(10px)' }}
@@ -107,6 +115,8 @@ export default function Public() {
               key="live"
               // versus fills the whole screen (under the bar); boards sit below it
               className={versus ? 'absolute inset-0' : 'flex min-h-0 flex-1 flex-col'}
+              // the board keeps clear row by row itself; versus has its own setting (app → Layout)
+              style={versus ? { right: 'var(--free-versus, 0vw)' } : undefined}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.94, filter: 'blur(16px)', transition: { duration: 0.7 } }}
@@ -134,6 +144,8 @@ export default function Public() {
             <motion.div
               key={`final-${snap.endedAt}`}
               className={versus ? 'absolute inset-0' : 'flex min-h-0 flex-1 flex-col'}
+              // the board keeps clear row by row itself; versus has its own setting (app → Layout)
+              style={versus ? { right: 'var(--free-versus, 0vw)' } : undefined}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}

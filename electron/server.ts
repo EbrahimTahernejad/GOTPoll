@@ -51,7 +51,7 @@ if (isDev) {
     return SIM[0][0];
   };
   // Dev-only screenshot of the app window itself (never the rest of the screen).
-  //   /api/dev/capture?route=/settings&section=channels
+  //   /api/dev/capture?route=/settings&section=channels   (&open=layout: with the Layout dialog open)
   app.get('/api/dev/capture', async (req: Request, res: Response) => {
     if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '')) {
       res.status(403).end();
@@ -86,6 +86,11 @@ if (isDev) {
       await win.loadURL(`${base}${route}${hash}`);
     }
     await new Promise((r) => setTimeout(r, 2000));
+    // fixed, no caller-supplied code: open the title bar's Layout dialog
+    if (req.query.open === 'layout') {
+      await win.webContents.executeJavaScript(`document.querySelector('button[title="How the viewer page is laid out"]')?.click()`);
+      await new Promise((r) => setTimeout(r, 800));
+    }
     if (req.query.probe === 'dialog') {
       // fixed diagnostic, no caller-supplied code
       const info = await win.webContents.executeJavaScript(
