@@ -9,6 +9,7 @@ import getFreePort from 'get-port';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { catalog, coversDir, poll, publicFeed, tournament, user } from './services.js';
 import { isPublicRequest, isPublicUpgrade } from './tunnel/allowlist.js';
+import { publicEntry } from './poll/engine.js';
 
 // Viewer page server (OBS browser source / second screen).
 //   GET  /            the live ranking page
@@ -23,6 +24,18 @@ export const port = await getFreePort({ port: [4747, 4748, 4749] });
 
 app.get('/api/counts', (req: Request, res: Response) => {
   res.json(publicFeed(undefined, { all: req.query.all === '1' }));
+});
+
+// The app's Layout previews: the viewer page in preview mode builds each
+// screen from these – the catalog's best-known titles, real covers. This
+// server only (the public link's server doesn't have it).
+app.get('/api/preview-sample', (_req: Request, res: Response) => {
+  const shows = catalog
+    .all()
+    .filter((s) => s.eligible && s.coverImage)
+    .sort((a, b) => b.popularity - a.popularity)
+    .slice(0, 40);
+  res.json({ base: { ...publicFeed(), tournament: null }, entries: shows.map((s, i) => publicEntry(s, Math.max(1, 60 - i * 3))) });
 });
 
 // cover images added to custom catalogs (content-addressed, so cache forever)
@@ -90,6 +103,14 @@ if (isDev) {
     if (req.query.open === 'layout') {
       await win.webContents.executeJavaScript(`document.querySelector('button[title="How the viewer page is laid out"]')?.click()`);
       await new Promise((r) => setTimeout(r, 800));
+    }
+    if (req.query.probe === 'frames') {
+      // fixed diagnostic, no caller-supplied code: the Layout dialog's preview frames
+      const info = await win.webContents.executeJavaScript(
+        `[...document.querySelectorAll('iframe')].map((f) => { const r = f.getBoundingClientRect(); let body = null; try { body = f.contentDocument?.body?.innerText?.slice(0, 80) ?? null } catch { body = 'cross-origin' } return { src: f.src, w: Math.round(r.width), h: Math.round(r.height), transform: f.style.transform, body } })`
+      );
+      res.json(info);
+      return;
     }
     if (req.query.probe === 'dialog') {
       // fixed diagnostic, no caller-supplied code

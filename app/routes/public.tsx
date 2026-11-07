@@ -6,6 +6,7 @@ import FinalReveal from '~/components/live/final-reveal';
 import Leaderboard from '~/components/live/leaderboard';
 import Versus from '~/components/live/versus';
 import useFreeSpace from '~/components/live/free-space';
+import { previewKind, usePreviewFeed } from '~/lib/preview-sample';
 import useLiveRanking from '~/hooks/useLiveRanking';
 import useLiveTime from '~/hooks/useLiveTime';
 
@@ -23,7 +24,12 @@ const EXAMPLES: Record<CatalogKind, string[]> = {
 export const WHAT: Record<CatalogKind, string> = { anilist: 'an anime title', imdb: 'a movie or show', games: 'a game', custom: 'a title' };
 
 export default function Public() {
-  const { snap, connected } = useLiveRanking();
+  // ?preview=…: one screen from sample titles, for the app's Layout dialog
+  const [kind] = useState(previewKind);
+  const live = useLiveRanking(!kind);
+  const preview = usePreviewFeed(kind);
+  const snap = kind ? preview : live.snap;
+  const connected = kind ? true : live.connected;
   const [transparent] = useState(
     () => typeof location !== 'undefined' && new URLSearchParams(location.search).has('transparent')
   );
@@ -116,7 +122,11 @@ export default function Public() {
               // versus fills the whole screen (under the bar); boards sit below it
               className={versus ? 'absolute inset-0' : 'flex min-h-0 flex-1 flex-col'}
               // the board keeps clear row by row itself; versus has its own setting (app → Layout)
-              style={versus ? { right: 'var(--free-versus, 0vw)' } : undefined}
+              style={
+                versus
+                  ? { right: 'var(--free-versus, 0vw)', maskImage: 'linear-gradient(to right, black calc(100% - min(6vw, var(--free-versus, 0vw))), transparent)' }
+                  : undefined
+              }
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.94, filter: 'blur(16px)', transition: { duration: 0.7 } }}
@@ -145,7 +155,11 @@ export default function Public() {
               key={`final-${snap.endedAt}`}
               className={versus ? 'absolute inset-0' : 'flex min-h-0 flex-1 flex-col'}
               // the board keeps clear row by row itself; versus has its own setting (app → Layout)
-              style={versus ? { right: 'var(--free-versus, 0vw)' } : undefined}
+              style={
+                versus
+                  ? { right: 'var(--free-versus, 0vw)', maskImage: 'linear-gradient(to right, black calc(100% - min(6vw, var(--free-versus, 0vw))), transparent)' }
+                  : undefined
+              }
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}

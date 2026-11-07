@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
  * Viewer page feed: a websocket that receives a full PublicSnapshot on every
  * change. Reconnects with backoff, so OBS sources survive app restarts.
  */
-export default function useLiveRanking() {
+/** `enabled: false` – no feed at all (the Layout dialog's previews build their own). */
+export default function useLiveRanking(enabled = true) {
   const [snap, setSnap] = useState<PublicSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
+    if (!enabled) return;
     let ws: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
@@ -62,7 +64,7 @@ export default function useLiveRanking() {
       if (retry) clearTimeout(retry);
       ws?.close();
     };
-  }, []);
+  }, [enabled]);
 
   return { snap, connected };
 }

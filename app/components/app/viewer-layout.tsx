@@ -1,5 +1,5 @@
 import { LayoutTemplate } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '~/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 import { cn } from '~/lib/utils';
@@ -57,23 +57,24 @@ const PRESETS: {
 
 const pct = (r: Rect) => ({ left: `${r.left}%`, top: `${r.top}%`, right: `${r.right}%`, bottom: `${r.bottom}%` });
 
-const SCREENS: { title: string; hint?: string; sliders: { key: Key; label: string }[]; sketch: (f: ViewerFreeSpace, l: Layout) => React.ReactNode }[] = [
+// each screen's preview is the real viewer page in preview mode (sample titles), shrunk into its frame
+const SCREENS: { title: string; hint?: string; kind: string; sliders: { key: Key; label: string }[] }[] = [
   {
     title: 'Board',
     hint: 'poll and tournament open round',
+    kind: 'board',
     sliders: [
       { key: 'nav', label: 'Top bar' },
       { key: 'top', label: 'Top three' },
       { key: 'rows', label: 'Rows below' },
     ],
-    sketch: (f, l) => <BoardSketch f={f} l={l} />,
   },
-  { title: 'Final results', hint: 'poll reveal and tournament champion', sliders: [{ key: 'final', label: 'Keep free' }], sketch: (f) => <FinalSketch free={f.final} /> },
-  { title: 'Bracket', sliders: [{ key: 'bracket', label: 'Keep free' }], sketch: (f) => <BracketSketch free={f.bracket} /> },
-  { title: '1v1 / versus', hint: 'versus polls, 1v1 intro and vote', sliders: [{ key: 'versus', label: 'Keep free' }], sketch: (f) => <VersusSketch free={f.versus} /> },
-  { title: 'Coin flip', sliders: [{ key: 'coin', label: 'Keep free' }], sketch: (f) => <CoinSketch free={f.coin} /> },
-  { title: 'Cage draw', sliders: [{ key: 'draw', label: 'Keep free' }], sketch: (f) => <DrawSketch free={f.draw} /> },
-  { title: 'Other screens', hint: 'qualifiers, report, “opens soon”', sliders: [{ key: 'other', label: 'Keep free' }], sketch: (f) => <ListSketch free={f.other} /> },
+  { title: 'Final results', hint: 'poll reveal and tournament champion', kind: 'final', sliders: [{ key: 'final', label: 'Keep free' }] },
+  { title: 'Bracket', kind: 'bracket', sliders: [{ key: 'bracket', label: 'Keep free' }] },
+  { title: '1v1 / versus', hint: 'versus polls, 1v1 intro and vote', kind: 'versus', sliders: [{ key: 'versus', label: 'Keep free' }] },
+  { title: 'Coin flip', kind: 'coin', sliders: [{ key: 'coin', label: 'Keep free' }] },
+  { title: 'Cage draw', kind: 'draw', sliders: [{ key: 'draw', label: 'Keep free' }] },
+  { title: 'Other screens', hint: 'qualifiers, report, “opens soon”', kind: 'other', sliders: [{ key: 'other', label: 'Keep free' }] },
 ];
 
 export default function ViewerLayoutButton() {
@@ -89,6 +90,10 @@ export default function ViewerLayoutButton() {
   };
   const setFree = (k: Key, v: number) => l && set({ layouts: { ...l.layouts, [l.layoutPreset]: { ...l.layouts[l.layoutPreset], [k]: v } } });
   const preset = PRESETS.find((p) => p.id === l?.layoutPreset) ?? PRESETS[0];
+  const [port, setPort] = useState<number | null>(null);
+  useEffect(() => {
+    if (open) window.GOTPoll.getServerPort().then(setPort);
+  }, [open]);
 
   return (
     <>
@@ -135,8 +140,13 @@ export default function ViewerLayoutButton() {
           {l && (
             <div className="grid gap-3 md:grid-cols-2">
               {SCREENS.map((s) => (
-                <div key={s.title} className={cn('bg-foreground/[0.03] flex gap-4 rounded-lg border p-3', s.title === 'Board' && 'md:col-span-2')}>
-                  <Frame preset={preset}>{s.sketch(l.layouts[l.layoutPreset], l)}</Frame>
+                <div
+                  key={s.title}
+                  className={cn('bg-foreground/[0.03] flex gap-4 rounded-lg border p-3', s.title === 'Board' ? 'items-start md:col-span-2' : 'flex-col')}
+                >
+                  <Frame preset={preset} className={s.title === 'Board' ? 'w-[26rem]' : 'w-full'}>
+                    {port && <LivePage port={port} kind={s.kind} l={l} />}
+                  </Frame>
                   <div className="min-w-0 flex-1 space-y-2.5">
                     <div className="text-sm font-semibold">
                       {s.title}
@@ -180,10 +190,10 @@ function Row({ label, value, unit = '', min = 0, max, onChange }: { label: strin
 // ---------------------------------------------------------------- sketches
 
 /** The scene on stream: its bars, the viewer page in its place (the sketch), and the camera / chat on top. */
-function Frame({ preset, children }: { preset: (typeof PRESETS)[number]; children: React.ReactNode }) {
+function Frame({ preset, className, children }: { preset: (typeof PRESETS)[number]; className?: string; children: React.ReactNode }) {
   const framed = preset.chrome.length > 0;
   return (
-    <div className={cn('relative aspect-video w-56 shrink-0 self-start overflow-hidden rounded-md border', framed ? 'bg-emerald-950' : 'bg-[#0d0b18]')}>
+    <div className={cn('relative aspect-video shrink-0 overflow-hidden rounded-md border', framed ? 'bg-emerald-950' : 'bg-[#0d0b18]', className)}>
       <Chrome preset={preset} />
       <div className={cn('absolute overflow-hidden bg-[#0d0b18]', framed && 'rounded-[2px] ring-1 ring-emerald-400/70')} style={pct(preset.page)}>
         {children}
@@ -225,106 +235,47 @@ function Overlay({ preset, labels }: { preset: (typeof PRESETS)[number]; labels?
   );
 }
 
-const box = 'absolute rounded-[2px] bg-white/25';
-const faint = 'absolute rounded-[2px] bg-white/12';
-
-/** content area: everything left of the free space, with a small margin */
-const area = (free: number, top = 13, bottom = 4) => ({ left: '3%', right: `calc(3% + ${free}%)`, top: `${top}%`, bottom: `${bottom}%` });
-
-function TopBar({ free }: { free: number }) {
-  return <div className="absolute top-0 left-0 h-[9%] border-b border-white/10 bg-white/[0.06]" style={{ right: `${free}%` }} />;
-}
-
-function BoardSketch({ f, l }: { f: ViewerFreeSpace; l: Layout }) {
-  const cols = l.liveColumns;
-  const rows = Math.min(7, Math.ceil(Math.max(0, l.liveRows - 3) / cols));
+/**
+ * The viewer page itself in preview mode, at 1600×900 and scaled to its frame.
+ * The sliders reach it by postMessage, so it follows them as they move.
+ */
+function LivePage({ port, kind, l }: { port: number; kind: string; l: Layout }) {
+  const box = useRef<HTMLDivElement>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [scale, setScale] = useState(0);
+  const [ready, setReady] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setScale(el.clientWidth / 1600));
+    ro.observe(el);
+    // the page says when it listens; (re)send the values then
+    const onMessage = (e: MessageEvent) => {
+      if (e.source === frame.current?.contentWindow && (e.data as { gotpoll?: string })?.gotpoll === 'preview-ready') setReady((n) => n + 1);
+    };
+    window.addEventListener('message', onMessage);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('message', onMessage);
+    };
+  }, []);
+  useEffect(() => {
+    if (!ready) return;
+    frame.current?.contentWindow?.postMessage(
+      { gotpoll: 'layout', freeSpace: l.layouts[l.layoutPreset], liveRows: l.liveRows, liveColumns: l.liveColumns },
+      `http://localhost:${port}`
+    );
+  }, [ready, l, port]);
   return (
-    <>
-      <TopBar free={f.nav} />
-      <div className="absolute top-[13%] left-[3%] flex h-[26%] gap-[3%]" style={{ right: `calc(3% + ${f.top}%)` }}>
-        {[1.25, 1, 1].map((x, i) => (
-          <div key={i} className="rounded-sm bg-white/25" style={{ flex: x }} />
-        ))}
-      </div>
-      <div className="absolute top-[43%] bottom-[3%] left-[3%] grid content-start gap-[5%_3%]" style={{ right: `calc(3% + ${f.rows}%)`, gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
-        {Array.from({ length: rows * cols }, (_, i) => (
-          <div key={i} className="h-[0.5rem] rounded-[2px] bg-white/15" />
-        ))}
-      </div>
-    </>
-  );
-}
-
-function FinalSketch({ free }: { free: number }) {
-  return (
-    <div className="absolute" style={area(free, 12, 4)}>
-      <div className={box} style={{ left: '35%', right: '35%', top: '0%', height: '9%' }} />
-      {/* 2 · 1 · 3 */}
-      {[
-        [8, 30, 38],
-        [37, 26, 30],
-        [66, 30, 44],
-      ].map(([left, w, top], i) => (
-        <div key={i} className={i === 1 ? box : faint} style={{ left: `${left}%`, width: `${w - 4}%`, top: `${top}%`, bottom: '30%' }} />
-      ))}
-      {[0, 1].map((r) =>
-        [0, 1, 2].map((c) => <div key={`${r}${c}`} className={faint} style={{ left: `${4 + c * 31}%`, width: '28%', top: `${76 + r * 12}%`, height: '8%' }} />)
-      )}
-    </div>
-  );
-}
-
-function BracketSketch({ free }: { free: number }) {
-  const rounds = [8, 4, 2, 1];
-  return (
-    <div className="absolute flex gap-[4%]" style={area(free, 14, 6)}>
-      {rounds.map((n, r) => (
-        <div key={r} className="flex flex-1 flex-col justify-around">
-          {Array.from({ length: n }, (_, i) => (
-            <div key={i} className="h-[0.45rem] rounded-[2px] bg-white/20" />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function VersusSketch({ free }: { free: number }) {
-  return (
-    <div className="absolute" style={area(free, 14, 8)}>
-      <div className={box} style={{ left: '6%', width: '38%', top: '0%', bottom: '0%' }} />
-      <div className={box} style={{ right: '6%', width: '38%', top: '0%', bottom: '0%' }} />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] font-black text-white/60">VS</div>
-    </div>
-  );
-}
-
-function CoinSketch({ free }: { free: number }) {
-  return (
-    <div className="absolute" style={area(free, 14, 8)}>
-      <div className="absolute top-1/2 left-1/2 aspect-square h-[62%] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber-200/60 bg-amber-200/25" />
-    </div>
-  );
-}
-
-function DrawSketch({ free }: { free: number }) {
-  return (
-    <div className="absolute" style={area(free, 14, 6)}>
-      <div className="absolute top-[4%] left-[8%] aspect-square h-[88%] rounded-full border-2 border-white/30 bg-white/[0.06]" />
-      {Array.from({ length: 6 }, (_, i) => (
-        <div key={i} className={faint} style={{ right: '4%', width: '34%', top: `${8 + i * 14}%`, height: '9%' }} />
-      ))}
-    </div>
-  );
-}
-
-function ListSketch({ free }: { free: number }) {
-  return (
-    <div className="absolute" style={area(free, 14, 6)}>
-      <div className={box} style={{ left: '25%', right: '25%', top: '0%', height: '10%' }} />
-      {Array.from({ length: 6 }, (_, i) => (
-        <div key={i} className={faint} style={{ left: '10%', right: '10%', top: `${18 + i * 13}%`, height: '9%' }} />
-      ))}
+    <div ref={box} className="absolute inset-0">
+      <iframe
+        ref={frame}
+        title={`${kind} preview`}
+        src={`http://localhost:${port}/?preview=${kind}&clean`}
+        tabIndex={-1}
+        className="pointer-events-none absolute top-0 left-0 origin-top-left border-0"
+        style={{ width: 1600, height: 900, transform: `scale(${scale})` }}
+      />
     </div>
   );
 }

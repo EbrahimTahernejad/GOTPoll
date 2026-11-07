@@ -141,7 +141,15 @@ export default function TournamentView({
             key={layer}
             className="absolute inset-0 z-10"
             // room for the streamer's overlay, per screen (app → Layout); the open round's board handles its own rows
-            style={freeVarOf(t.screen) ? { right: `var(${freeVarOf(t.screen)}, 0vw)` } : undefined}
+            // (a narrowed screen fades out at its right edge – no hard cut through a 3D stage)
+            style={
+              freeVarOf(t.screen)
+                ? {
+                    right: `var(${freeVarOf(t.screen)}, 0vw)`,
+                    maskImage: `linear-gradient(to right, black calc(100% - min(6vw, var(${freeVarOf(t.screen)}, 0vw))), transparent)`,
+                  }
+                : undefined
+            }
             // bracket ⇄ VS ⇄ voting: a plain crossfade, the covers morph across.
             // Anything else: a deeper blur-and-zoom change of scene.
             initial={morph ? { opacity: 0 } : { opacity: 0, scale: 1.04, filter: 'blur(14px)' }}
