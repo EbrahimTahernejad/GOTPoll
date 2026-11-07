@@ -186,6 +186,8 @@ declare global {
     final: number;
     bracket: number;
     coin: number;
+    /** the coin flip's two covers and their names, lifted from the bottom (% of the height) – clear of a face box low down */
+    coinLift: number;
     /** versus polls, the 1v1 intro and the 1v1 */
     versus: number;
     /** the cage draw on the qualifying line */

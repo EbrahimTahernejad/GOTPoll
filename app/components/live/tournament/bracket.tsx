@@ -24,7 +24,8 @@ export default function BracketScreen({ t, channels }: { t: PublicTournament; ch
   const focus = t.focus ? [...t.rounds.flat(), t.third].find((m) => m?.key === t.focus) : null;
 
   return (
-    <div className="flex h-full flex-col px-[2vw] pt-[8.6vw] pb-[1.4vw]" style={{ fontSize: FONT[Math.min(R, 5)] }}>
+    <div className="flex h-full flex-col px-[2vw] pt-[8.6vw] pb-[1.4vw]" // everything is in em: shrink it all to the room left beside the streamer's overlay
+      style={{ fontSize: `calc(${FONT[Math.min(R, 5)]} * (1 - var(--free-bracket-n, 0)))` }}>
       <div className="flex min-h-0 flex-1 items-stretch justify-center">
         {leftRounds.map((r) => (
           <Column key={`l${r}`} t={t} r={r} matches={half(r, 0)} side="l" channels={channels} connector />

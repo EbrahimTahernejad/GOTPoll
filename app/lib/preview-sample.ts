@@ -8,8 +8,8 @@ import { useEffect, useMemo, useState } from 'react';
 
 export type PreviewKind = 'board' | 'final' | 'versus' | 'bracket' | 'coin' | 'draw' | 'other';
 
-type Sample = { base: PublicSnapshot; entries: PublicEntry[] };
-type LayoutMessage = { gotpoll: 'layout'; freeSpace: ViewerFreeSpace; liveRows: number; liveColumns: number };
+type Sample = { base: PublicSnapshot; entries: PublicEntry[]; /** when it came – one time for every rebuild, so the 3D screens don't restart */ at: number };
+type LayoutMessage = { gotpoll: 'layout'; kind?: PreviewKind; freeSpace: ViewerFreeSpace; liveRows: number; liveColumns: number };
 
 export function previewKind(): PreviewKind | null {
   if (typeof location === 'undefined') return null;
@@ -18,31 +18,34 @@ export function previewKind(): PreviewKind | null {
 }
 
 /** A snapshot for the preview, rebuilt when the dialog sends new layout values. */
-export function usePreviewFeed(kind: PreviewKind | null): PublicSnapshot | null {
+export function usePreviewFeed(initial: PreviewKind | null): PublicSnapshot | null {
+  // the dialog switches screens by message – one page, no reloads
+  const [kind, setKind] = useState(initial);
   const [sample, setSample] = useState<Sample | null>(null);
   const [layout, setLayout] = useState<Omit<LayoutMessage, 'gotpoll'> | null>(null);
   useEffect(() => {
-    if (!kind) return;
+    if (!initial) return;
     fetch('/api/preview-sample')
       .then((r) => r.json())
-      .then(setSample)
+      .then((x: Omit<Sample, 'at'>) => setSample({ ...x, at: Date.now() }))
       .catch(() => {});
     const onMessage = (e: MessageEvent) => {
       // only the app window that embeds this page, and only layout values
       if (e.source !== window.parent || (e.data as LayoutMessage)?.gotpoll !== 'layout') return;
-      const { freeSpace, liveRows, liveColumns } = e.data as LayoutMessage;
+      const { kind: next, freeSpace, liveRows, liveColumns } = e.data as LayoutMessage;
+      if (next) setKind(next);
       setLayout({ freeSpace, liveRows, liveColumns });
     };
     window.addEventListener('message', onMessage);
     // listening now: ask the app's dialog for the current values
     if (window.parent !== window) window.parent.postMessage({ gotpoll: 'preview-ready' }, '*');
     return () => window.removeEventListener('message', onMessage);
-  }, [kind]);
+  }, [initial]);
   // built once per change – the 3D screens restart whenever their tournament object does
   return useMemo(() => (kind && sample ? build(kind, sample, layout) : null), [kind, sample, layout]);
 }
 
-function build(kind: PreviewKind, { base, entries }: Sample, layout: Omit<LayoutMessage, 'gotpoll'> | null): PublicSnapshot {
+function build(kind: PreviewKind, { base, entries, at: now }: Sample, layout: Omit<LayoutMessage, 'gotpoll'> | null): PublicSnapshot {
   const e = (i: number, count?: number): PublicEntry => {
     const x = entries[i % Math.max(1, entries.length)];
     return { ...x, count: count ?? x.count };
@@ -52,7 +55,7 @@ function build(kind: PreviewKind, { base, entries }: Sample, layout: Omit<Layout
     ...(layout ?? {}),
     state: 'running',
     mode: 'open',
-    startedAt: Date.now() - 95_000,
+    startedAt: now - 95_000,
     endedAt: null,
     tournament: null,
   };
@@ -65,7 +68,7 @@ function build(kind: PreviewKind, { base, entries }: Sample, layout: Omit<Layout
   }
   if (kind === 'final') {
     const r = ranking(12);
-    return { ...snap, state: 'ended', endedAt: Date.now(), ranking: r, totalVotes: total(r), totalVoters: total(r) };
+    return { ...snap, state: 'ended', endedAt: now, ranking: r, totalVotes: total(r), totalVoters: total(r) };
   }
   if (kind === 'versus') {
     // votes per chat, keyed by the streamer's own channels
@@ -110,7 +113,7 @@ function build(kind: PreviewKind, { base, entries }: Sample, layout: Omit<Layout
     id: 'preview',
     title: base.title,
     archived: false,
-    createdAt: Date.now() - 3_600_000,
+    createdAt: now - 3_600_000,
     finishedAt: null,
     openVotes: total(standings),
     phase: 'bracket',
@@ -134,7 +137,7 @@ function build(kind: PreviewKind, { base, entries }: Sample, layout: Omit<Layout
     thirdPlace: null,
   };
   if (kind === 'bracket') return { ...snap, tournament: t };
-  if (kind === 'coin') return { ...snap, tournament: { ...t, screen: 'coin', coin: { key: '0-1', at: Date.now(), winner: show(3).id } } };
+  if (kind === 'coin') return { ...snap, tournament: { ...t, screen: 'coin', coin: { key: '0-1', at: now, winner: show(3).id } } };
   if (kind === 'draw') {
     const candidates = [show(7), show(8), show(9), show(10)];
     return {
@@ -144,7 +147,7 @@ function build(kind: PreviewKind, { base, entries }: Sample, layout: Omit<Layout
         phase: 'open-results',
         screen: 'draw',
         rounds: [],
-        cut: { candidates, votes: 9, slots: 1, picked: [candidates[1].id], method: 'draw', at: Date.now() },
+        cut: { candidates, votes: 9, slots: 1, picked: [candidates[1].id], method: 'draw', at: now },
       },
     };
   }

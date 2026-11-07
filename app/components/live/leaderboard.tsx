@@ -172,7 +172,7 @@ function HeroCard({
       exit={{ opacity: 0, scale: 0.9, filter: 'blur(8px)' }}
       transition={SPRING}
       className={cn(
-        'relative flex min-w-0 gap-[calc(1.1vw*var(--k,1))] overflow-hidden rounded-[calc(1.4vw*var(--k,1))] border border-white/10 bg-white/[0.045] p-[calc(0.9vw*var(--k,1))] backdrop-blur-xl',
+        'relative flex min-w-0 gap-[1.1vw] overflow-hidden rounded-[1.4vw] border border-white/10 bg-white/[0.045] p-[0.9vw] backdrop-blur-xl',
         lead && 'live-leader'
       )}
       style={{ ['--medal' as string]: medal }}
@@ -187,12 +187,12 @@ function HeroCard({
           entry={entry}
           layoutId={`cover-${entry.id}`}
           className={cn(
-            'aspect-[3/4] rounded-[calc(0.9vw*var(--k,1))] shadow-2xl shadow-black/60',
-            lead ? 'w-[calc(10.5vw*var(--k,1))]' : 'w-[calc(8.5vw*var(--k,1))]'
+            'aspect-[3/4] rounded-[0.9vw] shadow-2xl shadow-black/60',
+            lead ? 'w-[10.5vw]' : 'w-[8.5vw]'
           )}
         />
         <div
-          className="absolute -top-[calc(0.5vw*var(--k,1))] -left-[calc(0.5vw*var(--k,1))] grid h-[calc(2.6vw*var(--k,1))] w-[calc(2.6vw*var(--k,1))] place-items-center rounded-full text-[calc(1.25vw*var(--k,1))] font-black text-black shadow-xl"
+          className="absolute -top-[0.5vw] -left-[0.5vw] grid h-[2.6vw] w-[2.6vw] place-items-center rounded-full text-[1.25vw] font-black text-black shadow-xl"
           style={{ background: `radial-gradient(circle at 30% 30%, #fff8, transparent 60%), ${medal}` }}
         >
           {rank + 1}
@@ -322,7 +322,7 @@ export default function Leaderboard({
   return (
     <LayoutGroup>
       {/* room on the right for the streamer's camera / chat (app → Layout) */}
-      {/* (--k: the cards shrink with the room they have, so nothing gets clipped) */}
+      {/* (--k: the text in the cards shrinks with the room they have, so nothing gets clipped; the cards keep their height) */}
       <div
         className="relative grid grid-cols-[1.25fr_1fr_1fr] gap-[1.4vw]"
         style={{ marginRight: 'var(--free-top, 0vw)', ['--k' as string]: 'max(0.6, 1 - var(--free-top-n, 0))' }}

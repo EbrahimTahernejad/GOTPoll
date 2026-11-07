@@ -7,7 +7,7 @@ import { useEffect } from 'react';
 // screen has no overlay on top and no width to spare.
 
 const NARROW = 900;
-const KEYS: (keyof ViewerFreeSpace)[] = ['nav', 'top', 'rows', 'final', 'bracket', 'coin', 'versus', 'draw', 'other'];
+const KEYS: (keyof ViewerFreeSpace)[] = ['nav', 'top', 'rows', 'final', 'bracket', 'coin', 'coinLift', 'versus', 'draw', 'other'];
 
 export default function useFreeSpace(snap: PublicSnapshot | null) {
   const free = snap?.freeSpace;
@@ -16,9 +16,13 @@ export default function useFreeSpace(snap: PublicSnapshot | null) {
     const apply = () => {
       const narrow = window.innerWidth < NARROW;
       const root = document.documentElement.style;
-      for (const k of KEYS) root.setProperty(`--free-${k}`, `${narrow || !free ? 0 : free[k]}vw`);
-      // the board's top row as a plain number, for scaling its cards to the room left
-      root.setProperty('--free-top-n', String(narrow || !free ? 0 : free.top / 100));
+      for (const k of KEYS) {
+        const v = narrow || !free ? 0 : (free[k] ?? 0);
+        // widths are shares of the width; the coin's lift is a share of the height
+        root.setProperty(`--free-${k}`, `${v}${k === 'coinLift' ? 'vh' : 'vw'}`);
+        // the same share as a plain number, for scaling things to the room left
+        root.setProperty(`--free-${k}-n`, String(v / 100));
+      }
     };
     apply();
     window.addEventListener('resize', apply);

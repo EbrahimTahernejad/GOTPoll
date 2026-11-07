@@ -60,7 +60,7 @@ export default function FinalReveal({
       <Confetti ref={confetti} />
 
       {/* headline – the top row and the rest keep clear of the streamer's overlay (app → Layout) */}
-      <div className="relative h-[6.5vw] w-full" style={{ paddingRight: 'var(--free-final, 0vw)' }}>
+      <div className="relative h-[6.5vw] w-full" style={{ width: 'calc(100% - var(--free-final, 0vw))', alignSelf: 'flex-start' }}>
         <AnimatePresence mode="wait">
           {step < 4 ? (
             <motion.div

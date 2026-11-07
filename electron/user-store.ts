@@ -27,9 +27,9 @@ const DEFAULT_SETTINGS: Settings = {
   layoutPreset: 'full',
   layouts: {
     // a camera across the right third of the top, a chat column below it
-    full: { nav: 35, top: 35, rows: 16, final: 35, bracket: 35, coin: 35, versus: 0, draw: 35, other: 35 },
+    full: { nav: 34, top: 35, rows: 16, final: 35, bracket: 35, coin: 35, coinLift: 0, versus: 0, draw: 35, other: 35 },
     // the page in the big frame, the face box over its bottom-right quarter
-    framed: { nav: 0, top: 0, rows: 26, final: 26, bracket: 26, coin: 0, versus: 0, draw: 26, other: 26 },
+    framed: { nav: 0, top: 0, rows: 26, final: 26, bracket: 26, coin: 0, coinLift: 10, versus: 24, draw: 26, other: 26 },
   },
   catalog: 'anime',
   // romaji-aware by default: multilingual embeddings + a local LLM judge.

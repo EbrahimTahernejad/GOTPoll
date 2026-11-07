@@ -327,7 +327,9 @@ function Side({
 }) {
   return (
     <motion.div
-      className={cn('pointer-events-none absolute top-1/2 flex w-[16vw] -translate-y-1/2 flex-col items-center gap-[0.8vw] text-center', className)}
+      className={cn('pointer-events-none absolute flex w-[16vw] -translate-y-1/2 flex-col items-center gap-[0.8vw] text-center', className)}
+      // lifted clear of a face box low on the stream (app → Layout → coin flip)
+      style={{ top: 'calc(50% - var(--free-coinLift, 0vh))' }}
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: lost ? 0.35 : 1, y: 0, scale: won ? 1.08 : lost ? 0.92 : 1 }}
       transition={{ type: 'spring', stiffness: 200, damping: 18 }}

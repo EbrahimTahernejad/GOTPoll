@@ -72,7 +72,14 @@ const SCREENS: { title: string; hint?: string; kind: string; sliders: { key: Key
   { title: 'Final results', hint: 'poll reveal and tournament champion', kind: 'final', sliders: [{ key: 'final', label: 'Keep free' }] },
   { title: 'Bracket', kind: 'bracket', sliders: [{ key: 'bracket', label: 'Keep free' }] },
   { title: '1v1 / versus', hint: 'versus polls, 1v1 intro and vote', kind: 'versus', sliders: [{ key: 'versus', label: 'Keep free' }] },
-  { title: 'Coin flip', kind: 'coin', sliders: [{ key: 'coin', label: 'Keep free' }] },
+  {
+    title: 'Coin flip',
+    kind: 'coin',
+    sliders: [
+      { key: 'coin', label: 'Keep free' },
+      { key: 'coinLift', label: 'Lift the covers from the bottom' },
+    ],
+  },
   { title: 'Cage draw', kind: 'draw', sliders: [{ key: 'draw', label: 'Keep free' }] },
   { title: 'Other screens', hint: 'qualifiers, report, “opens soon”', kind: 'other', sliders: [{ key: 'other', label: 'Keep free' }] },
 ];
@@ -91,6 +98,8 @@ export default function ViewerLayoutButton() {
   const setFree = (k: Key, v: number) => l && set({ layouts: { ...l.layouts, [l.layoutPreset]: { ...l.layouts[l.layoutPreset], [k]: v } } });
   const preset = PRESETS.find((p) => p.id === l?.layoutPreset) ?? PRESETS[0];
   const [port, setPort] = useState<number | null>(null);
+  // one live preview at a time: the screen being adjusted
+  const [shown, setShown] = useState(SCREENS[0].kind);
   useEffect(() => {
     if (open) window.GOTPoll.getServerPort().then(setPort);
   }, [open]);
@@ -102,7 +111,7 @@ export default function ViewerLayoutButton() {
         Layout
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-6xl">
           <DialogHeader>
             <DialogTitle>Viewer page layout</DialogTitle>
             <DialogDescription>
@@ -138,16 +147,19 @@ export default function ViewerLayoutButton() {
             </div>
           )}
           {l && (
-            <div className="grid gap-3 md:grid-cols-2">
-              {SCREENS.map((s) => (
-                <div
-                  key={s.title}
-                  className={cn('bg-foreground/[0.03] flex gap-4 rounded-lg border p-3', s.title === 'Board' ? 'items-start md:col-span-2' : 'flex-col')}
-                >
-                  <Frame preset={preset} className={s.title === 'Board' ? 'w-[26rem]' : 'w-full'}>
-                    {port && <LivePage port={port} kind={s.kind} l={l} />}
-                  </Frame>
-                  <div className="min-w-0 flex-1 space-y-2.5">
+            <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+              {/* the screens and their sliders – touching one shows it on the right */}
+              <div className="space-y-2">
+                {SCREENS.map((s) => (
+                  <div
+                    key={s.title}
+                    onPointerDown={() => setShown(s.kind)}
+                    onFocus={() => setShown(s.kind)}
+                    className={cn(
+                      'cursor-pointer space-y-2 rounded-lg border p-3 transition-colors',
+                      shown === s.kind ? 'border-foreground/60 bg-foreground/[0.06]' : 'bg-foreground/[0.02] hover:bg-foreground/[0.04]'
+                    )}
+                  >
                     <div className="text-sm font-semibold">
                       {s.title}
                       {s.hint && <span className="text-muted-foreground ml-1.5 text-xs font-normal">{s.hint}</span>}
@@ -155,15 +167,23 @@ export default function ViewerLayoutButton() {
                     {s.sliders.map((x) => (
                       <Row key={x.key} label={x.label} value={l.layouts[l.layoutPreset][x.key]} unit="%" max={50} onChange={(v) => setFree(x.key, v)} />
                     ))}
-                    {s.title === 'Board' && (
-                      <div className="grid grid-cols-2 gap-4 border-t pt-2.5">
+                    {s.kind === 'board' && (
+                      <div className="grid grid-cols-2 gap-4 border-t pt-2">
                         <Row label="Shows" value={l.liveRows} min={3} max={100} onChange={(liveRows) => set({ liveRows })} />
                         <Row label="Columns" value={l.liveColumns} min={1} max={6} onChange={(liveColumns) => set({ liveColumns })} />
                       </div>
                     )}
                   </div>
+                ))}
+              </div>
+              <div className="sticky top-0 space-y-1.5">
+                <Frame preset={preset} className="w-full">
+                  {port && <LivePage port={port} kind={shown} l={l} />}
+                </Frame>
+                <div className="text-muted-foreground text-center text-xs">
+                  {SCREENS.find((s) => s.kind === shown)?.title} · {preset.name} – sample shows from your catalog
                 </div>
-              ))}
+              </div>
             </div>
           )}
         </DialogContent>
@@ -262,16 +282,18 @@ function LivePage({ port, kind, l }: { port: number; kind: string; l: Layout }) 
   useEffect(() => {
     if (!ready) return;
     frame.current?.contentWindow?.postMessage(
-      { gotpoll: 'layout', freeSpace: l.layouts[l.layoutPreset], liveRows: l.liveRows, liveColumns: l.liveColumns },
+      { gotpoll: 'layout', kind, freeSpace: l.layouts[l.layoutPreset], liveRows: l.liveRows, liveColumns: l.liveColumns },
       `http://localhost:${port}`
     );
-  }, [ready, l, port]);
+  }, [ready, l, port, kind]);
+  // the page loads once; switching screens is a message
+  const [first] = useState(kind);
   return (
     <div ref={box} className="absolute inset-0">
       <iframe
         ref={frame}
         title={`${kind} preview`}
-        src={`http://localhost:${port}/?preview=${kind}&clean`}
+        src={`http://localhost:${port}/?preview=${first}&clean`}
         tabIndex={-1}
         className="pointer-events-none absolute top-0 left-0 origin-top-left border-0"
         style={{ width: 1600, height: 900, transform: `scale(${scale})` }}
